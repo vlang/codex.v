@@ -3,8 +3,6 @@ module keymap
 import codex_config.types
 import codex_tui.key_hint
 
-// STUB: crate::keymap::bindings.
-//
 // Shared inventory of resolved runtime bindings.
 //
 // `/keymap` lookup and chord-prefix conflict detection must inspect the same
@@ -15,7 +13,6 @@ import codex_tui.key_hint
 // macro expansion, so the same table is spelled out once per accessor in the same declaration
 // order; `keymap_action_ids` order is load-bearing because `dispatch_binding` indexes into it.
 
-// STUB: crate::keymap::bindings::KeymapContext.
 // Config context in which a keymap action is active.
 pub enum KeymapContext {
 	global
@@ -32,7 +29,6 @@ pub enum KeymapContext {
 	approval
 }
 
-// STUB: crate::keymap::bindings::KeymapContext::config_name.
 pub fn (context KeymapContext) config_name() string {
 	return match context {
 		.global { 'global' }
@@ -50,12 +46,10 @@ pub fn (context KeymapContext) config_name() string {
 	}
 }
 
-// STUB: crate::keymap::bindings::KeymapContext::allows_plain_chord_prefix.
 pub fn (context KeymapContext) allows_plain_chord_prefix() bool {
 	return context in [KeymapContext.vim_normal, .vim_operator, .vim_search, .vim_text_object]
 }
 
-// STUB: crate::keymap::bindings::KeymapContext::overlaps.
 pub fn (context KeymapContext) overlaps(other KeymapContext) bool {
 	if context == other {
 		return true
@@ -71,17 +65,14 @@ pub fn (context KeymapContext) overlaps(other KeymapContext) bool {
 		|| (context.is_shared_main() && other.is_shared_main())
 }
 
-// STUB: crate::keymap::bindings::KeymapContext::is_shared_main.
 fn (context KeymapContext) is_shared_main() bool {
 	return context in [KeymapContext.global, .chat, .composer]
 }
 
-// STUB: crate::keymap::bindings::KeymapContext::is_main_editor.
 fn (context KeymapContext) is_main_editor() bool {
 	return context in [KeymapContext.editor, .vim_normal, .vim_operator, .vim_search, .vim_text_object]
 }
 
-// STUB: crate::keymap::bindings::KeymapActionId.
 // Stable identity for one configurable action.
 pub struct KeymapActionId {
 pub:
@@ -89,12 +80,11 @@ pub:
 	action  string
 }
 
-// STUB: crate::keymap::bindings::KeymapActionId::config_path.
 pub fn (action &KeymapActionId) config_path() string {
 	return 'tui.keymap.${action.context.config_name()}.${action.action}'
 }
 
-// STUB: Rust derives `Clone` and `Copy` because the action name is `&'static str`; V represents the
+// Rust derives `Clone` and `Copy` because the action name is `&'static str`; V represents the
 // name as an owned string, so dependency call sites use this helper where a copied identity must be
 // stored while the original remains live.
 pub fn clone_keymap_action_id(action &KeymapActionId) KeymapActionId {
@@ -104,24 +94,27 @@ pub fn clone_keymap_action_id(action &KeymapActionId) KeymapActionId {
 	}
 }
 
-// STUB: crate::keymap::bindings::RuntimeActionBinding. Rust borrows the resolved slice; V has no
-// borrowed-slice struct field, so the bindings are copied out of the runtime keymap.
+// Rust borrows the resolved slice; V has no borrowed-slice struct field, so the bindings are copied
+// out of the runtime keymap.
 pub struct RuntimeActionBinding {
 pub:
 	id       KeymapActionId
 	bindings []key_hint.KeyBinding
 }
 
-// STUB: crate::keymap::bindings::configured_binding_for_action return shape. Rust returns
-// `Option<&Option<KeybindingsSpec>>`; V has no nested optional, so the outer "action is known"
-// state is the optional return and the inner "action is configured" state is this field.
+// Rust returns `Option<&Option<KeybindingsSpec>>`; V has no reliable borrowed nested-optional
+// representation, so the outer "action is known" state is the optional return and the inner
+// "action is configured" state is this owned field.
 pub struct ConfiguredBindingSlot {
 pub:
 	spec ?types.KeybindingsSpec
 }
 
-// STUB: crate::keymap::bindings::keymap_action_id.
 // Resolve a config context/action pair to its runtime identity.
+//
+// Rust accepts borrowed `&str` values. V cannot borrow string literals as `&string`, so this
+// translation accepts values and only compares them; callers clone an owned string when they need
+// to retain it after the call under `-ownership`.
 pub fn keymap_action_id(context string, action string) ?KeymapActionId {
 	for candidate in keymap_action_ids() {
 		if candidate.context.config_name() == context && candidate.action == action {
@@ -131,7 +124,6 @@ pub fn keymap_action_id(context string, action string) ?KeymapActionId {
 	return none
 }
 
-// STUB: crate::keymap::bindings::configured_binding_for_action.
 // Return the configured slot for one runtime action, including global fallbacks.
 pub fn configured_binding_for_action(resolved_keymap &types.TuiKeymap, action &KeymapActionId) ?ConfiguredBindingSlot {
 	context := action.context.config_name()
@@ -952,7 +944,6 @@ pub fn configured_binding_for_action(resolved_keymap &types.TuiKeymap, action &K
 	}
 }
 
-// STUB: crate::keymap::bindings::keymap_action_ids.
 // Iterate over every stable runtime action identity.
 pub fn keymap_action_ids() []KeymapActionId {
 	return [
@@ -1527,8 +1518,9 @@ pub fn keymap_action_ids() []KeymapActionId {
 	]
 }
 
-// STUB: crate::keymap::bindings::bindings_for_action.
 // Return resolved bindings for one stable config context and action.
+// Rust returns a borrowed slice. V returns an owned array because it has no borrowed-slice return
+// equivalent, leaving the runtime keymap reusable by the caller.
 pub fn bindings_for_action(runtime_keymap &RuntimeKeymap, context string, action string) ?[]key_hint.KeyBinding {
 	match context {
 		'global' {
@@ -2047,7 +2039,6 @@ pub fn bindings_for_action(runtime_keymap &RuntimeKeymap, context string, action
 	}
 }
 
-// STUB: crate::keymap::bindings::push_binding_for_action.
 // Append an internal dispatch binding to one resolved action.
 pub fn push_binding_for_action(mut runtime_keymap RuntimeKeymap, action &KeymapActionId, binding key_hint.KeyBinding) bool {
 	match action.context.config_name() {
@@ -2709,7 +2700,6 @@ pub fn push_binding_for_action(mut runtime_keymap RuntimeKeymap, action &KeymapA
 	}
 }
 
-// STUB: crate::keymap::bindings::runtime_action_bindings.
 // Iterate over the same runtime bindings exposed to the keymap editor.
 pub fn runtime_action_bindings(runtime_keymap &RuntimeKeymap) []RuntimeActionBinding {
 	return [
