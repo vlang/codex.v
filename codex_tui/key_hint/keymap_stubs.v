@@ -119,10 +119,13 @@ pub fn has_ctrl_or_alt(mods event.KeyModifiers) bool {
 		&& !is_altgr(mods)
 }
 
-// STUB: crate::key_hint::is_altgr. The Rust source compiles the Windows definition
-// (`ALT` and `CONTROL` together) only on Windows and returns `false` everywhere else; this port
-// keeps the non-Windows behavior because the V tree has no target-cfg equivalent yet.
+// STUB: crate::key_hint::is_altgr. The Rust source treats ALT and CONTROL together as AltGr only
+// on Windows and returns false everywhere else.
 pub fn is_altgr(mods event.KeyModifiers) bool {
+	$if windows {
+		return mods.contains(event.key_modifiers_control)
+			&& mods.contains(event.key_modifiers_alt)
+	}
 	return false
 }
 

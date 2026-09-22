@@ -5,21 +5,16 @@ import codex_tui.key_hint
 import crossterm.event
 import tokio.time as tokio_time
 
-// STUB: crate::keymap::chords.
-//
 // Bounded, context-aware two-stroke shortcuts for TUI actions.
 //
 // Single-event bindings remain in the ordinary runtime keymaps. A completed
 // chord becomes an internal function-key token appended to the target action,
 // so existing handlers remain the only action dispatch table.
 
-// STUB: crate::keymap::chords::FIRST_DISPATCH_FUNCTION_KEY.
 const first_dispatch_function_key = types.max_function_key + 1
 
-// STUB: crate::keymap::chords::LAST_DISPATCH_FUNCTION_KEY.
 const last_dispatch_function_key = u8(255)
 
-// STUB: crate::keymap::chords::LIST_RESERVED_BINDINGS.
 const list_reserved_bindings = [
 	ReservedBinding{
 		action:  'cancel'
@@ -39,37 +34,31 @@ const list_reserved_bindings = [
 	},
 ]
 
-// STUB: crate::keymap::chords::KEY_CHORD_TIMEOUT.
 // Time allowed between the first and second strokes of a key chord, in nanoseconds.
 pub const key_chord_timeout = i64(1_000_000_000) // secs: 1
 
-// STUB: crate::keymap::chords::KeymapContextSet.
 // Compact set of keymap contexts that share one active input path.
 pub struct KeymapContextSet {
 pub:
 	bits u16
 }
 
-// STUB: crate::keymap::chords::KeymapContextSet::new.
 pub fn KeymapContextSet.new(context KeymapContext) KeymapContextSet {
 	return KeymapContextSet{
 		bits: context_bit(context)
 	}
 }
 
-// STUB: crate::keymap::chords::KeymapContextSet::with.
 pub fn (set KeymapContextSet) with(context KeymapContext) KeymapContextSet {
 	return KeymapContextSet{
 		bits: set.bits | context_bit(context)
 	}
 }
 
-// STUB: crate::keymap::chords::KeymapContextSet::contains.
 pub fn (set KeymapContextSet) contains(context KeymapContext) bool {
 	return set.bits & context_bit(context) != 0
 }
 
-// STUB: crate::keymap::chords::context_bit.
 fn context_bit(context KeymapContext) u16 {
 	shift := match context {
 		.global { 0 }
@@ -88,14 +77,12 @@ fn context_bit(context KeymapContext) u16 {
 	return u16(1) << shift
 }
 
-// STUB: crate::keymap::chords::KeyChord.
 pub struct KeyChord {
 pub:
 	prefix     key_hint.KeyBinding
 	completion key_hint.KeyBinding
 }
 
-// STUB: crate::keymap::chords::RuntimeChordBinding.
 pub struct RuntimeChordBinding {
 pub:
 	action KeymapActionId
@@ -104,14 +91,13 @@ mut:
 	spec string
 }
 
-// STUB: the `(KeymapActionId, Vec<String>)` pair stored by RuntimeChordKeymap::configured_specs.
+// The `(KeymapActionId, Vec<String>)` pair stored by RuntimeChordKeymap::configured_specs.
 struct ConfiguredActionSpecs {
 	action KeymapActionId
 mut:
 	specs []string
 }
 
-// STUB: crate::keymap::chords::RuntimeChordKeymap.
 // Chord bindings plus configured alternatives in declaration order.
 //
 // The Rust field and accessor are both named `configured_specs`; V forbids a method that shadows a
@@ -123,9 +109,8 @@ mut:
 	configured_specs_by_action []ConfiguredActionSpecs
 }
 
-// STUB: the Rust type derives `Clone`; V has no automatic struct clone, so keymap.rs uses this
-// source-shaped dependency helper at each `Arc::clone(&chords)` boundary until chords.rs is fully
-// translated.
+// The Rust type derives `Clone`; V has no automatic struct clone, so keymap.v uses this helper at
+// each source `Arc::clone(&chords)` boundary.
 pub fn clone_runtime_chord_keymap(chords &RuntimeChordKeymap) RuntimeChordKeymap {
 	mut bindings := []RuntimeChordBinding{cap: chords.bindings.len}
 	for binding in chords.bindings {
@@ -158,7 +143,6 @@ pub fn clone_runtime_chord_keymap(chords &RuntimeChordKeymap) RuntimeChordKeymap
 	}
 }
 
-// STUB: crate::keymap::chords::RuntimeChordKeymap::from_config.
 pub fn RuntimeChordKeymap.from_config(resolved_keymap &types.TuiKeymap) !RuntimeChordKeymap {
 	mut keymap_chords := RuntimeChordKeymap{}
 	for action in keymap_action_ids() {
@@ -249,7 +233,8 @@ pub fn RuntimeChordKeymap.from_config(resolved_keymap &types.TuiKeymap) !Runtime
 	return keymap_chords
 }
 
-// STUB: crate::keymap::chords::RuntimeChordKeymap::configured_specs.
+// Rust returns a borrowed string slice; V returns an owned copy because it has no borrowed-slice
+// return equivalent.
 pub fn (chords &RuntimeChordKeymap) configured_specs(action &KeymapActionId) ?[]string {
 	for entry in chords.configured_specs_by_action {
 		if entry.action == *action {
@@ -259,7 +244,6 @@ pub fn (chords &RuntimeChordKeymap) configured_specs(action &KeymapActionId) ?[]
 	return none
 }
 
-// STUB: crate::keymap::chords::RuntimeChordKeymap::primary_hint.
 // Return the user's first configured shortcut without exposing dispatch tokens.
 pub fn (chords &RuntimeChordKeymap) primary_hint(action &KeymapActionId, bindings &[]key_hint.KeyBinding) ?key_hint.ShortcutHint {
 	if specs := chords.configured_specs(action) {
@@ -285,7 +269,7 @@ pub fn (chords &RuntimeChordKeymap) primary_hint(action &KeymapActionId, binding
 	return none
 }
 
-// STUB: discriminants of the payload-bearing crate::keymap::chords::KeyChordMatch enum.
+// Discriminants of the payload-bearing KeyChordMatch enum.
 pub enum KeyChordMatchKind {
 	pass_through
 	pending
@@ -294,7 +278,6 @@ pub enum KeyChordMatchKind {
 	ignored
 }
 
-// STUB: crate::keymap::chords::KeyChordMatch.
 // Outcome of routing one physical key through the chord state machine.
 //
 // Rust carries the `Pending` and `Completed` payloads inside the enum; V keeps them in disjoint
@@ -306,14 +289,12 @@ pub:
 	completed event.KeyEvent
 }
 
-// STUB: crate::keymap::chords::KeyChordMatch::PassThrough.
 pub fn KeyChordMatch.pass_through() KeyChordMatch {
 	return KeyChordMatch{
 		kind: .pass_through
 	}
 }
 
-// STUB: crate::keymap::chords::KeyChordMatch::Pending.
 pub fn KeyChordMatch.new_pending(prefix key_hint.KeyBinding) KeyChordMatch {
 	return KeyChordMatch{
 		kind:    .pending
@@ -321,7 +302,6 @@ pub fn KeyChordMatch.new_pending(prefix key_hint.KeyBinding) KeyChordMatch {
 	}
 }
 
-// STUB: crate::keymap::chords::KeyChordMatch::Completed.
 pub fn KeyChordMatch.new_completed(dispatch event.KeyEvent) KeyChordMatch {
 	return KeyChordMatch{
 		kind:      .completed
@@ -329,40 +309,34 @@ pub fn KeyChordMatch.new_completed(dispatch event.KeyEvent) KeyChordMatch {
 	}
 }
 
-// STUB: crate::keymap::chords::KeyChordMatch::Cancelled.
 pub fn KeyChordMatch.cancelled() KeyChordMatch {
 	return KeyChordMatch{
 		kind: .cancelled
 	}
 }
 
-// STUB: crate::keymap::chords::KeyChordMatch::Ignored.
 pub fn KeyChordMatch.ignored() KeyChordMatch {
 	return KeyChordMatch{
 		kind: .ignored
 	}
 }
 
-// STUB: crate::keymap::chords::PendingChord.
 struct PendingChord {
 	prefix     key_hint.KeyBinding
 	contexts   KeymapContextSet
 	started_at tokio_time.Instant
 }
 
-// STUB: crate::keymap::chords::KeyChordMatcher.
 // Tracks one pending two-stroke chord without buffering ordinary input.
 pub struct KeyChordMatcher {
 mut:
 	pending ?PendingChord
 }
 
-// STUB: crate::keymap::chords::KeyChordMatcher::is_pending.
 pub fn (matcher &KeyChordMatcher) is_pending() bool {
 	return matcher.pending != none
 }
 
-// STUB: crate::keymap::chords::KeyChordMatcher::cancel.
 pub fn (mut matcher KeyChordMatcher) cancel() bool {
 	if matcher.pending != none {
 		matcher.pending = none
@@ -371,7 +345,6 @@ pub fn (mut matcher KeyChordMatcher) cancel() bool {
 	return false
 }
 
-// STUB: crate::keymap::chords::KeyChordMatcher::expire.
 pub fn (mut matcher KeyChordMatcher) expire(contexts KeymapContextSet, now tokio_time.Instant) bool {
 	if pending := matcher.pending {
 		if pending.contexts != contexts
@@ -383,7 +356,6 @@ pub fn (mut matcher KeyChordMatcher) expire(contexts KeymapContextSet, now tokio
 	return false
 }
 
-// STUB: crate::keymap::chords::KeyChordMatcher::advance.
 pub fn (mut matcher KeyChordMatcher) advance(key_event event.KeyEvent, resolved_keymap &RuntimeChordKeymap, contexts KeymapContextSet, now tokio_time.Instant) KeyChordMatch {
 	if is_dispatch_token_event(key_event) {
 		return KeyChordMatch.ignored()
@@ -428,7 +400,6 @@ pub fn (mut matcher KeyChordMatcher) advance(key_event event.KeyEvent, resolved_
 	return KeyChordMatch.pass_through()
 }
 
-// STUB: crate::keymap::chords::install_dispatch_bindings.
 pub fn install_dispatch_bindings(mut resolved_keymap RuntimeKeymap) ! {
 	mut actions := []KeymapActionId{}
 	for binding in resolved_keymap.chords.bindings {
@@ -446,7 +417,6 @@ pub fn install_dispatch_bindings(mut resolved_keymap RuntimeKeymap) ! {
 	}
 }
 
-// STUB: crate::keymap::chords::dispatch_binding.
 fn dispatch_binding(action &KeymapActionId) ?key_hint.KeyBinding {
 	mut index := -1
 	for candidate_index, candidate in keymap_action_ids() {
@@ -465,26 +435,22 @@ fn dispatch_binding(action &KeymapActionId) ?key_hint.KeyBinding {
 	return key_hint.KeyBinding.new(event.KeyCode.function_key(u8(function_key)), event.key_modifiers_none)
 }
 
-// STUB: crate::keymap::chords::dispatch_event.
 fn dispatch_event(action &KeymapActionId) ?event.KeyEvent {
 	parts := dispatch_binding(action)?.parts()
 	return event.KeyEvent.new(parts.code, parts.modifiers)
 }
 
-// STUB: crate::keymap::chords::is_dispatch_token.
 pub fn is_dispatch_token(binding key_hint.KeyBinding) bool {
 	parts := binding.parts()
 	return parts.code.kind == .function && parts.code.f >= int(first_dispatch_function_key)
 		&& parts.code.f <= int(last_dispatch_function_key)
 }
 
-// STUB: crate::keymap::chords::is_dispatch_token_event.
 fn is_dispatch_token_event(input event.KeyEvent) bool {
 	return input.code.kind == .function && input.code.f >= int(first_dispatch_function_key)
 		&& input.code.f <= int(last_dispatch_function_key)
 }
 
-// STUB: crate::keymap::chords::chord_stroke_matches.
 fn chord_stroke_matches(binding key_hint.KeyBinding, key_event event.KeyEvent) bool {
 	ctrl_slash := key_hint.ctrl(event.KeyCode.char_key(`/`))
 	ctrl_seven := key_hint.ctrl(event.KeyCode.char_key(`7`))
@@ -494,7 +460,6 @@ fn chord_stroke_matches(binding key_hint.KeyBinding, key_event event.KeyEvent) b
 		|| (binding.parts() == ctrl_seven.parts() && ctrl_slash.is_press(key_event))
 }
 
-// STUB: crate::keymap::chords::effective_configured_binding.
 fn effective_configured_binding(resolved_keymap &types.TuiKeymap, action &KeymapActionId) ?types.KeybindingsSpec {
 	slot := configured_binding_for_action(resolved_keymap, action)?
 	if configured := slot.spec {
@@ -511,7 +476,6 @@ fn effective_configured_binding(resolved_keymap &types.TuiKeymap, action &Keymap
 	}
 }
 
-// STUB: crate::keymap::chords::normalize_chord_binding.
 pub fn normalize_chord_binding(binding key_hint.KeyBinding) key_hint.KeyBinding {
 	parts := binding.normalized_parts()
 	normalized := key_hint.KeyBinding.new(parts.code, parts.modifiers)
@@ -521,7 +485,6 @@ pub fn normalize_chord_binding(binding key_hint.KeyBinding) key_hint.KeyBinding 
 	return normalized
 }
 
-// STUB: crate::keymap::chords::validate_chord_conflicts.
 // Reject chords that would shadow an active single binding or fixed shortcut.
 pub fn validate_chord_conflicts(resolved_keymap &RuntimeKeymap) ! {
 	for index, binding in resolved_keymap.chords.bindings {
@@ -554,7 +517,6 @@ pub fn validate_chord_conflicts(resolved_keymap &RuntimeKeymap) ! {
 	}
 }
 
-// STUB: crate::keymap::chords::validate_binding_shape.
 fn validate_binding_shape(binding &RuntimeChordBinding) ! {
 	path := binding.action.config_path()
 	prefix := binding.chord.prefix.parts()
@@ -570,7 +532,6 @@ fn validate_binding_shape(binding &RuntimeChordBinding) ! {
 	}
 }
 
-// STUB: crate::keymap::chords::validate_reserved_strokes.
 fn validate_reserved_strokes(binding &RuntimeChordBinding) ! {
 	path := binding.action.config_path()
 	strokes := [
@@ -588,9 +549,10 @@ fn validate_reserved_strokes(binding &RuntimeChordBinding) ! {
 		return error('Invalid `${path}` = `${binding.spec}`: `backspace` is reserved for editing task input.')
 	}
 
-	// Rust guards this branch with `#[cfg(unix)]`; the V tree only targets Unix hosts today.
-	if key_hint.ctrl(event.KeyCode.char_key(`z`)).parts() in strokes {
-		return error('Ambiguous `${path}` = `${binding.spec}`: `ctrl-z` is reserved for suspending the terminal on Unix. Choose a different chord and retry.')
+	$if !windows {
+		if key_hint.ctrl(event.KeyCode.char_key(`z`)).parts() in strokes {
+			return error('Ambiguous `${path}` = `${binding.spec}`: `ctrl-z` is reserved for suspending the terminal on Unix. Choose a different chord and retry.')
+		}
 	}
 
 	reserved := match binding.action.context {
