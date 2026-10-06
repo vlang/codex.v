@@ -6,8 +6,7 @@ module codex_protocol
 
 import math
 import os
-import json
-import x.json2
+import json2
 import tokio.sync.oneshot
 import codex_extension_items.image_generation
 import codex_protocol.account
@@ -845,10 +844,10 @@ pub fn (communication &InterAgentCommunication) to_response_input_item() Respons
 		role:    'assistant'
 		content: [ContentItem{
 			kind: 'output_text'
-			// V3's optional ownership pass cannot specialize json2's generic encoder when this
-			// protocol module is pulled into a decode-only downstream executable. The stable JSON
-			// encoder preserves the same wire object while avoiding that compiler-only failure.
-			text: json.encode(serialized_communication)
+			// Current V releases provide json2 in normal and production builds.
+			// Use the same wire encoder in both so assertion-enabled downstream
+			// tests do not depend on the removed legacy json module.
+			text: json2.encode(serialized_communication)
 		}]
 		phase:   MessagePhase.commentary
 	}

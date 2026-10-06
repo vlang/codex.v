@@ -1,13 +1,13 @@
 module codex_app_server_protocol
 
 import codex_protocol
-import x.json2
+import json2
 
 // STUB: OptionalJsonValue preserves the optional structured `serde_json::Value` error data.
 pub struct OptionalJsonValue {
 pub:
 	has_value bool
-	value     json2.Any = json2.null
+	value     json2.Any = json2.Any(json2.null)
 }
 
 // STUB: JSONRPCErrorError is owned by codex-app-server-protocol and will be replaced by the
@@ -883,7 +883,7 @@ pub:
 	service_tier                  ClearableString
 	cwd                           ?string
 	runtime_workspace_roots       ?[]string
-	approval_policy               ?AskForApproval
+	approval_policy               ?codex_app_server_protocol.AskForApproval
 	approvals_reviewer            ?ApprovalsReviewer
 	sandbox                       ?SandboxMode
 	permissions                   ?string
@@ -891,8 +891,8 @@ pub:
 	service_name                  ?string
 	base_instructions             ?string
 	developer_instructions        ?string
-	dynamic_tools                 ?[]DynamicToolSpec
-	selected_capability_roots     ?[]SelectedCapabilityRoot
+	dynamic_tools                 ?[]codex_app_server_protocol.DynamicToolSpec
+	selected_capability_roots     ?[]codex_app_server_protocol.SelectedCapabilityRoot
 	experimental_raw_events       bool
 	personality                   ?codex_protocol.Personality
 	ephemeral                     ?bool

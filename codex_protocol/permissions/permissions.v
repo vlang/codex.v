@@ -1,6 +1,7 @@
 module permissions
 
 import codex_utils_absolute_path
+import codex_utils_path_uri
 import os
 
 pub type AbsolutePathBuf = codex_utils_absolute_path.AbsolutePathBuf
@@ -24,6 +25,9 @@ pub enum FileSystemSpecialPath {
 	minimal
 	project_roots
 	workspace_roots
+	tmpdir
+	slash_tmp
+	unknown
 }
 
 // STUB: Filesystem path selector.
@@ -33,6 +37,26 @@ pub:
 	path    string
 	special FileSystemSpecialPath
 	subpath ?string
+	// STUB: Typed canonical PathUri retains identity at app-server conversion seams.
+	// Existing native `path` callers remain supported until the permissions port.
+	uri FileSystemPathUri
+	// STUB: Payloads of the untranslated GlobPattern and Unknown selector variants.
+	pattern      string
+	unknown_path string
+}
+
+// STUB: Optional canonical PathUri payload alongside the existing native-path
+// representation. A tagged wrapper lets borrowed selectors remain reusable in
+// V's ownership checker, which moves composite ?PathUri during if-let matching.
+pub struct FileSystemPathUri {
+pub:
+	has_value bool
+	value     codex_utils_path_uri.PathUri
+}
+
+// STUB: Owned canonical URI construction for the untranslated selector owner.
+pub fn FileSystemPathUri.some(value codex_utils_path_uri.PathUri) FileSystemPathUri {
+	return FileSystemPathUri{ has_value: true, value: value }
 }
 
 // STUB: A filesystem sandbox rule.
@@ -49,6 +73,8 @@ pub:
 	kind              string
 	entries           []FileSystemSandboxEntry
 	platform_defaults bool
+	// STUB: models.rs/permissions.rs retain the managed filesystem scan limit.
+	glob_scan_max_depth ?usize
 }
 
 // STUB: Canonical network sandbox policy.
