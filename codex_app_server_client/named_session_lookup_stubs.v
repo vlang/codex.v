@@ -229,11 +229,12 @@ fn (handle &AppServerRequestHandle) request_named_thread_list(request codex_app_
 	} else {
 		rows.sort(a.created_at > b.created_at)
 	}
-	if (if direction := params.sort_direction {
-		direction
+	direction := if sort_direction := params.sort_direction {
+		sort_direction
 	} else {
 		codex_app_server_protocol.SortDirection.desc
-	}) == .asc {
+	}
+	if direction == codex_app_server_protocol.SortDirection.asc {
 		rows.reverse_in_place()
 	}
 	start := if cursor := params.cursor { cursor.int() } else { 0 }
