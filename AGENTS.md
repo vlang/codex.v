@@ -95,6 +95,8 @@ checker (`v -ownership`).
 5. Remove temporary outputs. Do not remove editor swap files or unrelated user changes.
 6. Report any unavoidable V language/compiler adaptation explicitly; a successful non-ownership
    build alone is not completion.
+7. Commit completed changes before handoff. Stage only the task's changes and preserve unrelated
+   working-tree and staged changes.
 
 ## Parallel translation
 
