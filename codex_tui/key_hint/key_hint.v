@@ -1,6 +1,7 @@
 module key_hint
 
 import crossterm.event
+import ratatui.style as rat_style
 import ratatui.text as rat_text
 
 // Key binding primitives and input matching for the TUI.
@@ -276,8 +277,8 @@ pub fn span_from_shortcut_hint(hint ShortcutHint) rat_text.Span {
 	}
 }
 
-fn key_hint_style() rat_text.SpanStyle {
-	return rat_text.SpanStyle{ dim: true }
+fn key_hint_style() rat_style.Style {
+	return rat_style.Style.default().dim()
 }
 
 pub fn has_ctrl_or_alt(mods event.KeyModifiers) bool {

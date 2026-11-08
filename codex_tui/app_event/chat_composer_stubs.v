@@ -3,6 +3,7 @@ module app_event
 import codex_connectors
 import codex_protocol.thread_id
 import codex_tui.history_cell
+import codex_tui.task_mentions
 
 // STUB: crate::app_event::ConnectorsSnapshot.
 pub struct ConnectorsSnapshot {
@@ -23,19 +24,24 @@ pub enum AppEventKind {
 	open_agents_overview
 	insert_history_cell
 	lookup_message_history_entry
+	task_search_result
+	permission_profiles_loaded
 }
 
-// STUB: crate::app_event::AppEvent payloads observed by ChatComposer. Rust's payload enum is an
+// STUB: crate::app_event::AppEvent payloads observed by ChatComposer and task-mention search. Rust's payload enum is an
 // explicit V tag with variant-specific storage; file-search text cannot be mistaken for a history
 // cell.
 pub struct AppEvent {
 pub:
-	kind              AppEventKind
-	file_search_query string
-	history_cell      ?history_cell.HistoryCell
-	thread_id         thread_id.ThreadId
-	history_offset    int
-	history_log_id    u64
+	kind                AppEventKind
+	file_search_query   string
+	history_cell        ?history_cell.HistoryCell
+	thread_id           thread_id.ThreadId
+	history_offset      int
+	history_log_id      u64
+	task_search_query   string
+	task_matches        []task_mentions.TaskMention
+	permission_profiles PermissionProfilesLoaded
 }
 
 // STUB: crate::app_event::AppEvent::StartFileSearch.
@@ -60,5 +66,15 @@ pub fn lookup_message_history_entry(id thread_id.ThreadId, offset int, log_id u6
 		thread_id:      id
 		history_offset: offset
 		history_log_id: log_id
+	}
+}
+
+// STUB: crate::app_event::AppEvent::TaskSearchResult.
+pub fn task_search_result(id thread_id.ThreadId, query string, matches []task_mentions.TaskMention) AppEvent {
+	return AppEvent{
+		kind:              .task_search_result
+		thread_id:         id
+		task_search_query: query
+		task_matches:      matches
 	}
 }

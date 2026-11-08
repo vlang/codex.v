@@ -445,7 +445,11 @@ pub fn (pool &SqlitePool) execute_query(query &sqlx.Query) !sqlx.QueryResult {
 				}
 				return if left.thread_id < right.thread_id {
 					-1
-				} else if left.thread_id > right.thread_id { 1 } else { 0 }
+				} else if left.thread_id > right.thread_id {
+					1
+				} else {
+					0
+				}
 			})
 			count := if limit < i64(candidates.len) { int(limit) } else { candidates.len }
 			for index in 0 .. count {
@@ -818,7 +822,11 @@ pub fn (pool &SqlitePool) fetch_all_query(query &sqlx.Query) ![]sqlx.Row {
 				}
 				return if left.thread_id > right.thread_id {
 					-1
-				} else if left.thread_id < right.thread_id { 1 } else { 0 }
+				} else if left.thread_id < right.thread_id {
+					1
+				} else {
+					0
+				}
 			})
 			for output in outputs {
 				rows << output_sql_row(output)
@@ -861,7 +869,11 @@ pub fn (pool &SqlitePool) fetch_all_query(query &sqlx.Query) ![]sqlx.Row {
 				}
 				return if left.thread_id > right.thread_id {
 					-1
-				} else if left.thread_id < right.thread_id { 1 } else { 0 }
+				} else if left.thread_id < right.thread_id {
+					1
+				} else {
+					0
+				}
 			})
 			start := if offset < i64(outputs.len) { int(offset) } else { outputs.len }
 			end := if start + int(limit) < outputs.len { start + int(limit) } else { outputs.len }

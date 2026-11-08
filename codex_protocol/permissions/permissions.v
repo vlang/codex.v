@@ -144,7 +144,7 @@ pub fn (policy &FileSystemSandboxPolicy) has_full_disk_read_access() bool {
 
 // STUB: Full disk write evaluation belongs to permissions.rs.
 pub fn (policy &FileSystemSandboxPolicy) has_full_disk_write_access() bool {
-	return policy.kind == 'danger_full_access'
+	return policy.additional_dirs_full_disk_write_access()
 }
 
 // STUB: Platform-default inclusion belongs to permissions.rs.

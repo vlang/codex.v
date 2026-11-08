@@ -22,6 +22,8 @@ import codex_utils_absolute_path
 import codex_utils_absolute_path.path_utils
 import os
 import strconv
+import serde_json
+import std_path
 import sync
 import time
 import tracing
@@ -63,13 +65,12 @@ const thread_items_max_limit = 100
 const thread_search_occurrences_default_limit = 50
 const thread_search_occurrences_max_limit = 250
 
-// OptionalStringMap is the explicit V representation of Rust's
-// `Option<HashMap<String, serde_json::Value>>`. Values are serialized JSON at the untranslated
-// serde boundary.
+// OptionalStringMap retains the previous public adapter name while preserving
+// Rust's Option<HashMap<String, serde_json::Value>> as typed JSON values.
 pub struct OptionalStringMap {
 pub mut:
 	has_value bool
-	value     map[string]string
+	value     map[string]serde_json.Value
 }
 
 // OptionalStringArray preserves the distinction between no cwd filter and an empty filter list.
@@ -325,19 +326,7 @@ fn reasoning_effort_config_name(value codex_protocol.ReasoningEffortConfig) stri
 }
 
 fn clone_config(config &Config) Config {
-	return Config{
-		model_provider_id:      config.model_provider_id.clone()
-		codex_home:             config.codex_home.clone()
-		cwd:                    config.cwd.clone()
-		workspace_roots:        config.workspace_roots.clone()
-		thread_unload_delay_ms: config.thread_unload_delay_ms
-		ephemeral:              config.ephemeral
-		features:               config.features
-		model_reasoning_effort: config.model_reasoning_effort
-		permissions:            codex_core.clone_config_permissions(&config.permissions)
-		active_project:         config.active_project
-		config_layer_stack:     config.config_layer_stack.clone()
-	}
+	return config.clone()
 }
 
 fn clone_config_overrides(overrides &ConfigOverrides) ConfigOverrides {
@@ -366,9 +355,54 @@ fn clone_config_overrides(overrides &ConfigOverrides) ConfigOverrides {
 	}
 }
 
-fn clone_optional_config_map(value ?map[string]string) ?map[string]string {
+// The wrapper safely borrows Rust's resource-owning Option without forming &?T.
+fn clone_optional_config_map(value &OptionalStringMap) ?map[string]serde_json.Value {
+	if value.has_value {
+		return clone_json_config_map(&value.value)
+	}
+	return none
+}
+
+fn clone_json_config_map(value &map[string]serde_json.Value) map[string]serde_json.Value {
+	mut result := map[string]serde_json.Value{}
+	for key in value.keys() {
+		// SAFETY: keys() contains existing entries, and this shared map is not
+		// mutated while its entry is borrowed. Only the owned clone escapes.
+		result[key] = unsafe { (&(*value)[key]).clone() }
+	}
+	return result
+}
+
+// Rust's HashMap<String, Value> equality compares contents independent of
+// allocation and insertion order. V's generated recursive equality needs this
+// explicit borrowed adapter for independently owned JSON trees.
+fn json_config_maps_equal(left &map[string]serde_json.Value, right &map[string]serde_json.Value) bool {
+	if left.len != right.len {
+		return false
+	}
+	for key in left.keys() {
+		if key !in *right {
+			return false
+		}
+		// SAFETY: both entries exist and neither shared map is mutated here.
+		if !unsafe { (&(*left)[key]).equals(&(*right)[key]) } {
+			return false
+		}
+	}
+	return true
+}
+
+// These conversions move the owned Option payload at the background-task boundary.
+fn owned_optional_config_map(value ?map[string]serde_json.Value) OptionalStringMap {
 	if values := value {
-		return values.clone()
+		return OptionalStringMap{ has_value: true, value: values }
+	}
+	return OptionalStringMap{}
+}
+
+fn optional_config_map_value(value OptionalStringMap) ?map[string]serde_json.Value {
+	if value.has_value {
+		return value.value
 	}
 	return none
 }
@@ -514,7 +548,7 @@ pub fn merge_persisted_resume_metadata(
 
 	if reasoning_effort := persisted_metadata.reasoning_effort {
 		request_overrides.has_value = true
-		request_overrides.value['model_reasoning_effort'] = reasoning_effort_config_name(reasoning_effort)
+		request_overrides.value['model_reasoning_effort'] = serde_json.Value.string(reasoning_effort_config_name(reasoning_effort))
 	}
 }
 
@@ -546,13 +580,16 @@ pub fn has_model_resume_override(
 			|| 'model_reasoning_effort' in request_overrides.value))
 }
 
-fn parse_approval_policy_override(value &string) !api.AskForApproval {
-	normalized := trim_rust_whitespace(value).trim('"')
+fn parse_approval_policy_override(value &serde_json.Value) !api.AskForApproval {
+	if !value.is_string() {
+		return api.AskForApproval(api.ApprovalPolicy.from_wire_value(value)!)
+	}
+	normalized := value.string_owned()!
 	return match normalized {
-		'untrusted' { .untrusted }
-		'on-failure', 'on_failure' { .on_failure }
-		'on-request', 'on_request' { .on_request }
-		'never' { .never }
+		'untrusted' { api.AskForApproval{ kind: .untrusted } }
+		'on-failure', 'on_failure' { api.AskForApproval{ kind: .on_failure } }
+		'on-request', 'on_request' { api.AskForApproval{ kind: .on_request } }
+		'never' { api.AskForApproval{ kind: .never } }
 		else { error('unknown approval policy `${normalized}`') }
 	}
 }
@@ -1361,7 +1398,7 @@ fn (processor &ThreadRequestProcessor) thread_start_inner(
 	initial_config_warnings := processor.initial_config_warnings.clone()
 	request_trace := request_context.request_trace()
 	background_task := fn [listener_task_context, thread_store, config_manager, request_id, app_server_client_name, app_server_client_version, client_mcp_extensions, params, typesafe_overrides, resolved_environment_selections, request_trace, outgoing, error_request_id, initial_config_warnings] () {
-		thread_start_task(listener_task_context, thread_store, config_manager, request_id, app_server_client_name, app_server_client_version, client_mcp_extensions, params.config, typesafe_overrides, params.dynamic_tools, params.selected_capability_roots or { []api.SelectedCapabilityRoot{} }, params.history_mode, params.session_start_source, params.thread_source, params.project_id, resolved_environment_selections, params.service_name, params.allow_provider_model_fallback, params.experimental_raw_events, request_trace, initial_config_warnings) or {
+		thread_start_task(listener_task_context, thread_store, config_manager, request_id, app_server_client_name, app_server_client_version, client_mcp_extensions, owned_optional_config_map(params.config), typesafe_overrides, params.dynamic_tools, params.selected_capability_roots or { []api.SelectedCapabilityRoot{} }, params.history_mode, params.session_start_source, params.thread_source, params.project_id, resolved_environment_selections, params.service_name, params.allow_provider_model_fallback, params.experimental_raw_events, request_trace, initial_config_warnings) or {
 			outgoing.send_error(error_request_id, api.JSONRPCErrorError{
 				code:    err.code()
 				message: err.msg()
@@ -1420,7 +1457,7 @@ fn thread_start_task(
 	app_server_client_name ?string,
 	app_server_client_version ?string,
 	client_mcp_extensions ClientMcpExtensions,
-	config_overrides ?map[string]string,
+	config_overrides OptionalStringMap,
 	typesafe_overrides ConfigOverrides,
 	dynamic_tools ?[]api.DynamicToolSpec,
 	selected_capability_roots []api.SelectedCapabilityRoot,
@@ -1437,7 +1474,7 @@ fn thread_start_task(
 ) ! {
 	thread_start_started_at := time.now()
 	requested_cwd := clone_optional_string(typesafe_overrides.cwd)
-	mut config := config_manager.load_with_overrides(clone_optional_config_map(config_overrides), clone_config_overrides(&typesafe_overrides)) or {
+	mut config := config_manager.load_with_overrides(clone_optional_config_map(&config_overrides), clone_config_overrides(&typesafe_overrides)) or {
 		message := err.msg()
 		return fail(config_load_error(&message))
 	}
@@ -1448,7 +1485,8 @@ fn thread_start_task(
 		.none, .external { true }
 		.legacy {
 			file_system_policy := effective_permission_profile.file_system_sandbox_policy()
-			file_system_policy.can_write_local_path_with_cwd(&config.cwd, &config.cwd)
+			cwd_path := std_path.Path.new(&config.cwd)
+			file_system_policy.can_write_local_path_with_cwd(&cwd_path, &cwd_path)
 		}
 	}
 	if requested_cwd != none && config.active_project.trust_level == none
@@ -1467,7 +1505,7 @@ fn thread_start_task(
 				value: 'trusted'
 			}
 		}
-		config = config_manager.load_with_cli_overrides(cli_overrides_for_reload, config_overrides, typesafe_overrides, none) or {
+		config = config_manager.load_with_cli_overrides(cli_overrides_for_reload, optional_config_map_value(config_overrides), typesafe_overrides, none) or {
 			message := err.msg()
 			return fail(config_load_error(&message))
 		}
@@ -2351,7 +2389,11 @@ fn (processor &ThreadRequestProcessor) thread_list_response_inner(
 		.section_position { store.ThreadSortKey.section_position }
 	}
 	sort_direction := params.sort_direction or {
-		if store_sort_key == .section_position { api.SortDirection.asc } else { api.SortDirection.desc }
+		if store_sort_key == .section_position {
+			api.SortDirection.asc
+		} else {
+			api.SortDirection.desc
+		}
 	}
 	filters := ThreadListFilters{
 		model_providers:   params.model_providers
@@ -3215,7 +3257,7 @@ fn (processor &ThreadRequestProcessor) thread_resume_inner(
 	if values := params.config {
 		request_overrides = OptionalStringMap{
 			has_value: true
-			value:     values.clone()
+			value:     clone_json_config_map(&values)
 		}
 	}
 	mut typesafe_overrides := processor.build_thread_config_overrides(params.model, params.model_provider, params.service_tier, params.cwd, params.runtime_workspace_roots, params.approval_policy, params.approvals_reviewer, params.sandbox, params.permissions, params.base_instructions, params.developer_instructions, params.personality)
@@ -3321,9 +3363,9 @@ fn (processor &ThreadRequestProcessor) thread_resume_inner(
 		// Config loading can call back into Desktop; release the permit during host work.
 		probe_permit_held = false
 		probe_permit.release()
-		mut owned_overrides := ?map[string]string(none)
+		mut owned_overrides := ?map[string]serde_json.Value(none)
 		if request_overrides.has_value {
-			owned_overrides = request_overrides.value.clone()
+			owned_overrides = clone_json_config_map(&request_overrides.value)
 		}
 		loaded_config := processor.config_manager.load_for_cwd(owned_overrides, typesafe_overrides, history_cwd_for_load) or {
 			message := err.msg()
@@ -4049,17 +4091,17 @@ fn (processor &ThreadRequestProcessor) thread_fork_inner(
 		source_history_items = stored_history.items.clone()
 	}
 	// Persist Windows sandbox mode.
-	mut cli_overrides := map[string]string{}
-	if supplied_overrides := clone_optional_config_map(params.config) {
-		cli_overrides = supplied_overrides.clone()
+	mut cli_overrides := map[string]serde_json.Value{}
+	if mut supplied_overrides := params.config {
+		cli_overrides = supplied_overrides.move()
 	}
 	$if windows {
 		match codex_core.windows_sandbox_level_from_config(&processor.config) {
 			.elevated {
-				cli_overrides['windows.sandbox'] = '"elevated"'
+				cli_overrides['windows.sandbox'] = serde_json.Value.string('elevated')
 			}
 			.restricted_token {
-				cli_overrides['windows.sandbox'] = '"unelevated"'
+				cli_overrides['windows.sandbox'] = serde_json.Value.string('unelevated')
 			}
 			.disabled {}
 		}
@@ -4076,16 +4118,16 @@ fn (processor &ThreadRequestProcessor) thread_fork_inner(
 	restore_approvals_reviewer := typesafe_overrides.approvals_reviewer == none
 		&& !('approvals_reviewer' in cli_overrides)
 	request_override_map := if cli_overrides.len > 0 {
-		OptionalStringMap{ has_value: true, value: cli_overrides.clone() }
+		OptionalStringMap{ has_value: true, value: clone_json_config_map(&cli_overrides) }
 	} else {
 		OptionalStringMap{}
 	}
 	// Rust borrows one request map for override inspection and later moves it into config loading.
 	// Give the final load its own owned V optional after those inspections are complete.
 	request_overrides_for_load := if cli_overrides.len == 0 {
-		?map[string]string(none)
+		?map[string]serde_json.Value(none)
 	} else {
-		?map[string]string(cli_overrides.clone())
+		?map[string]serde_json.Value(clone_json_config_map(&cli_overrides))
 	}
 	restore_permission_profile := !has_permission_override(&request_override_map, &typesafe_overrides)
 	needs_latest_settings := restore_approval_policy || restore_approvals_reviewer
@@ -5028,7 +5070,10 @@ fn merge_turn_history_with_active_turn(mut turns []api.Turn, active_turn api.Tur
 
 fn build_legacy_api_turns_from_rollout_items(items &[]store.RolloutItem) []api.Turn {
 	mut turns := []api.Turn{}
-	for item in *items {
+	// Rust iterates the borrowed slice by reference. Explicitly borrow each V element too,
+	// keeping clones at the selected turn/message boundaries instead of cloning the whole item.
+	for index in 0 .. items.len {
+		item := &(*items)[index]
 		match item.kind {
 			.turn {
 				turns << clone_turn(&item.turn)

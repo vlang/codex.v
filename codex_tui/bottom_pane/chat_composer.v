@@ -1,5 +1,7 @@
 module bottom_pane
 
+import codex_tui.slash_command
+import codex_utils_fuzzy_match
 import codex_app_server_protocol.skill_metadata
 import codex_connectors
 import codex_connectors.metadata as connector_metadata
@@ -14,6 +16,7 @@ import codex_tui.clipboard_paste
 import codex_tui.history_cell
 import codex_tui.key_hint
 import codex_tui.keymap as tui_keymap
+import codex_tui.bottom_pane.prompt_args
 import codex_tui.bottom_pane.slash_input as slash_parser
 import codex_tui.style as tui_style
 import codex_tui.task_mentions
@@ -274,7 +277,7 @@ pub:
 	kind           InputResultKind
 	text           string
 	text_elements  []user_input.TextElement
-	command        SlashCommand
+	command        slash_command.SlashCommand
 	service_tier   ServiceTierCommand
 	action         QueuedInputAction
 	pending_pastes []PendingPaste
@@ -291,7 +294,7 @@ fn input_result_none() InputResult {
 	return InputResult{ kind: .no_result }
 }
 
-fn parent_owned_command_is_allowed(command SlashCommand, args &string) bool {
+fn parent_owned_command_is_allowed(command slash_command.SlashCommand, args &string) bool {
 	if command == .export_cmd {
 		return true
 	}
@@ -393,7 +396,7 @@ mut:
 	pending_slash_command_history   ?HistoryEntry
 	skills                          ?&SkillCatalogRef
 	plugins                         ?&PluginCatalogRef
-	task_mentions                   ?[]TaskMention
+	task_mentions                   ?[]task_mentions.TaskMention
 	connectors_snapshot             ?app_event.ConnectorsSnapshot
 	collaboration_modes_enabled     bool
 	config                          ChatComposerConfig
@@ -601,7 +604,7 @@ pub fn (mut composer ChatComposer) set_plugin_mentions(plugins ?[]codex_plugin.P
 }
 
 pub fn (mut composer ChatComposer) set_task_mentions_enabled(enabled bool) {
-	composer.task_mentions = if enabled { []TaskMention{} } else { none }
+	composer.task_mentions = if enabled { []task_mentions.TaskMention{} } else { none }
 	composer.refresh_mentions_v2_popup_candidates()
 	if enabled && composer.popups.active.kind == .mention_v2 {
 		if query := composer.current_mentions_v2_token() {
@@ -616,7 +619,7 @@ pub fn (composer &ChatComposer) task_mentions_enabled() bool {
 	return composer.task_mentions != none
 }
 
-pub fn (mut composer ChatComposer) on_task_search_result(query &string, matches []TaskMention) {
+pub fn (mut composer ChatComposer) on_task_search_result(query &string, matches []task_mentions.TaskMention) {
 	current := composer.current_mentions_v2_token() or { return }
 	if current != *query {
 		return
@@ -626,11 +629,11 @@ pub fn (mut composer ChatComposer) on_task_search_result(query &string, matches 
 	}
 	mut mentioned_ids := map[string]bool{}
 	for binding in composer.snapshot_mention_bindings() {
-		if thread_id := valid_thread_path(&binding.path) {
+		if thread_id := task_mentions.valid_thread_path(&binding.path) {
 			mentioned_ids[thread_id] = true
 		}
 	}
-	mut filtered := []TaskMention{}
+	mut filtered := []task_mentions.TaskMention{}
 	for task in matches {
 		if mentioned_ids.len < task_mentions.max_referenced_tasks && task.thread_id !in mentioned_ids {
 			filtered << task
@@ -643,7 +646,7 @@ pub fn (mut composer ChatComposer) on_task_search_result(query &string, matches 
 // Refreshes an open mention catalog when skill or plugin metadata changes.
 fn (mut composer ChatComposer) refresh_mentions_v2_popup_candidates() {
 	if composer.popups.active.kind == .mention_v2 {
-		tasks := composer.task_mentions or { []TaskMention{} }
+		tasks := composer.task_mentions or { []task_mentions.TaskMention{} }
 		items := build_mentions_v2_catalog(composer.skills(), composer.plugins(), &tasks)
 		composer.popups.active.mention_v2.set_candidates(items)
 	}
@@ -1181,13 +1184,13 @@ pub fn (composer &ChatComposer) vim_mode_indicator_span() ?rat_text.Span {
 	}
 	mode := composer.draft.textarea.vim_mode
 	color := match mode {
-		'insert' { rat_style.Color.green }
-		'replace' { rat_style.Color.cyan }
-		else { rat_style.Color.magenta }
+		'insert' { rat_style.Color{ kind: .green } }
+		'replace' { rat_style.Color{ kind: .cyan } }
+		else { rat_style.Color{ kind: .magenta } }
 	}
 	return rat_text.Span{
 		text:  'Vim: ${mode.title()}'
-		style: rat_style.Style{ foreground: color }
+		style: rat_style.Style.default().fg(color)
 	}
 }
 
@@ -1198,7 +1201,7 @@ fn (composer &ChatComposer) mode_indicator_line(show_cycle_hint bool) ?rat_text.
 	}
 	if indicators := status_line_right_indicator_line(composer.footer.collaboration_mode_indicator, composer.footer.goal_status_indicator, composer.footer.ide_context_active, show_cycle_hint) {
 		if spans.len > 0 {
-			spans << rat_text.Span{ text: ' | ', style: rat_style.Style{ dim: true } }
+			spans << rat_text.Span{ text: ' | ', style: rat_style.Style.default().dim() }
 		}
 		spans << indicators.spans
 	}
@@ -1216,7 +1219,7 @@ fn (composer &ChatComposer) right_footer_line_with_context() rat_text.Line {
 	}
 	if span := composer.vim_mode_indicator_span() {
 		mut spans := line.spans.clone()
-		spans << rat_text.Span{ text: ' | ', style: rat_style.Style{ dim: true } }
+		spans << rat_text.Span{ text: ' | ', style: rat_style.Style.default().dim() }
 		spans << span
 		line = rat_text.Line{ spans: spans }
 	}
@@ -1747,7 +1750,7 @@ fn (mut composer ChatComposer) handle_non_ascii_char(input terminal_event.KeyEve
 				text := composer.draft.textarea.text()
 				safe_cursor := ChatComposer.clamp_to_char_boundary(&text, cursor)
 				before := text[..safe_cursor]
-				if grab := composer.draft.paste_burst.decide_begin_buffer(now_ms, &before, decision.retro_chars) {
+				if grab := composer.draft.paste_burst.decide_begin_buffer(now_ms, &before, int(decision.retro_chars)) {
 					if grab.grabbed.len == 0
 						|| composer.draft.textarea.retract_paste_burst(grab.start_byte) {
 						composer.draft.paste_burst.append_char_to_buffer(input.code.ch, now_ms)
@@ -2263,7 +2266,7 @@ fn (mut composer ChatComposer) insert_selected_mention(start int, end int, inser
 	composer.draft.textarea.set_cursor(adjusted_start)
 	id := composer.draft.textarea.insert_element(insert_text)
 	if value := path {
-		is_task_path := valid_thread_path(&value) != none
+		is_task_path := task_mentions.valid_thread_path(&value) != none
 		if is_task_path && insert_text.starts_with('@') && insert_text.len > 1 {
 			composer.draft.mention_bindings[id] = ComposerMentionBinding{
 				sigil:   `@`
@@ -2323,7 +2326,7 @@ fn (composer &ChatComposer) current_mention_elements() []MentionElement {
 	mut result := []MentionElement{}
 	for snapshot in composer.draft.textarea.text_element_snapshots() {
 		if binding := composer.draft.mention_bindings[snapshot.id] {
-			if valid_thread_path(&binding.path) != none
+			if task_mentions.valid_thread_path(&binding.path) != none
 				&& snapshot.text == '${binding.sigil}${binding.mention}' {
 				result << MentionElement{ id: snapshot.id, sigil: binding.sigil, mention: binding.mention.clone() }
 				continue
@@ -2365,7 +2368,7 @@ fn (mut composer ChatComposer) bind_mentions_from_snapshot(bindings []MentionBin
 		token := '${binding.sigil}${binding.mention}'
 		mut matched_start := -1
 		mut matched_end := -1
-		if valid_thread_path(&binding.path) != none {
+		if task_mentions.valid_thread_path(&binding.path) != none {
 			for snapshot in composer.draft.textarea.text_element_snapshots() {
 				if snapshot.start >= scan_from && snapshot.text == token {
 					matched_start = snapshot.start
@@ -2399,7 +2402,7 @@ fn (composer &ChatComposer) plugin_at_mention_highlights() []Highlight {
 	for snapshot in composer.draft.textarea.text_element_snapshots() {
 		if binding := composer.draft.mention_bindings[snapshot.id] {
 			if binding.path.starts_with('plugin://') && snapshot.text.starts_with('@') {
-				result << Highlight{ start: snapshot.start, end: snapshot.end, style: rat_style.Style{ foreground: .magenta } }
+				result << Highlight{ start: snapshot.start, end: snapshot.end, style: rat_style.Style.default().fg(rat_style.Color{ kind: .magenta }) }
 			}
 		}
 	}
@@ -2536,8 +2539,8 @@ fn (mut composer ChatComposer) handle_submission_with_time(should_queue bool, no
 		raw_text := composer.draft.textarea.text()
 		defer_slash_validation := composer.slash_input().should_parse_on_dequeue(&raw_text)
 		preserve_pending := defer_slash_validation && composer.draft.pending_pastes.len > 0
-			&& if name, _, _ := slash_parser.parse_slash_name(&raw_text) {
-				name == SlashCommand.goal.command()
+			&& if name, _, _ := prompt_args.parse_slash_name(&raw_text) {
+				name == slash_command.SlashCommand.goal.command()
 			} else {
 				false
 			}
@@ -2626,7 +2629,7 @@ fn (mut composer ChatComposer) handle_parent_owned_submission() ?InputResult {
 		return none
 	}
 	text := composer.current_text()
-	name, args, _ := slash_parser.parse_slash_name(&text) or {
+	name, args, _ := prompt_args.parse_slash_name(&text) or {
 		return InputResult{ kind: .parent_owned_input_blocked }
 	}
 	if command := composer.slash_input().command(&name) {
@@ -2859,7 +2862,7 @@ fn (composer &ChatComposer) shell_mode_footer_line() ?rat_text.Line {
 		return rat_text.Line{
 			spans: [rat_text.Span{
 				text:  'Shell mode'
-				style: rat_style.Style{ foreground: .light_red }
+				style: rat_style.Style.default().light_red()
 			}]
 		}
 	}
@@ -2967,7 +2970,7 @@ fn (mut composer ChatComposer) handle_input_basic_with_time(input terminal_event
 					text := composer.draft.textarea.text()
 					safe_cursor := ChatComposer.clamp_to_char_boundary(&text, cursor)
 					before := text[..safe_cursor]
-					if grab := composer.draft.paste_burst.decide_begin_buffer(now_ms, &before, decision.retro_chars) {
+					if grab := composer.draft.paste_burst.decide_begin_buffer(now_ms, &before, int(decision.retro_chars)) {
 						if grab.grabbed.len == 0
 							|| composer.draft.textarea.retract_paste_burst(grab.start_byte) {
 							composer.draft.paste_burst.append_char_to_buffer(input.code.ch, now_ms)
@@ -3302,7 +3305,10 @@ fn (mut composer ChatComposer) sync_command_popup(allow bool) {
 	command_token := command_popup_filter_text(&line, /* cursor */
 		0)
 	if token := command_token {
-		if dismissed := composer.popups.dismissed_command_token {
+		// Rust compares through `Option::as_deref`. An if-guard on a field of the `mut`
+		// receiver takes the value under `-ownership`, so guard a local copy of the field.
+		dismissed_token := composer.popups.dismissed_command_token
+		if dismissed := dismissed_token {
 			if dismissed == token {
 				return
 			}
@@ -3352,7 +3358,11 @@ fn (mut composer ChatComposer) sync_command_popup(allow bool) {
 
 // Synchronize the legacy file-search popup with the current `@` token.
 fn (mut composer ChatComposer) sync_file_search_popup(start int, end int, query string) {
-	if dismissed := composer.popups.dismissed_file_token {
+	// Rust tests the token through `Option::as_ref`. An if-guard on a field of the `mut`
+	// receiver takes the value under `-ownership`, so guard a local copy of the field
+	// instead (an independent clone under `-ownership`).
+	dismissed_token := composer.popups.dismissed_file_token
+	if dismissed := dismissed_token {
 		if dismissed.matches(&composer.draft.textarea, start, end, &query) {
 			return
 		}
@@ -3382,7 +3392,11 @@ fn (mut composer ChatComposer) sync_file_search_popup(start int, end int, query 
 }
 
 fn (mut composer ChatComposer) sync_mention_popup(target MentionCompletionTarget) {
-	if dismissed := composer.popups.dismissed_mention_token {
+	// Rust tests the token through `Option::as_ref`. An if-guard on a field of the `mut`
+	// receiver takes the value under `-ownership`, so guard a local copy of the field
+	// instead (an independent clone under `-ownership`).
+	dismissed_token := composer.popups.dismissed_mention_token
+	if dismissed := dismissed_token {
 		if dismissed.matches(&composer.draft.textarea, target.start, target.end, &target.query) {
 			return
 		}
@@ -3404,7 +3418,11 @@ fn (mut composer ChatComposer) sync_mention_popup(target MentionCompletionTarget
 }
 
 fn (mut composer ChatComposer) sync_mentions_v2_popup(start int, end int, query string) {
-	if dismissed := composer.popups.dismissed_mention_token {
+	// Rust tests the token through `Option::as_ref`. An if-guard on a field of the `mut`
+	// receiver takes the value under `-ownership`, so guard a local copy of the field
+	// instead (an independent clone under `-ownership`).
+	dismissed_token := composer.popups.dismissed_mention_token
+	if dismissed := dismissed_token {
 		if dismissed.matches(&composer.draft.textarea, start, end, &query) {
 			return
 		}
@@ -3433,7 +3451,7 @@ fn (mut composer ChatComposer) sync_mentions_v2_popup(start int, end int, query 
 	if composer.popups.active.kind == .mention_v2 {
 		composer.popups.active.mention_v2.set_query(&query)
 	} else {
-		tasks := composer.task_mentions or { []TaskMention{} }
+		tasks := composer.task_mentions or { []task_mentions.TaskMention{} }
 		candidates := build_mentions_v2_catalog(composer.skills(), composer.plugins(), &tasks)
 		composer.popups.active = ActivePopup{
 			kind:       .mention_v2
@@ -3854,7 +3872,7 @@ pub fn (composer &ChatComposer) render_with_mask_and_textarea_right_reserve(area
 		} else {
 			composer.draft.input_disabled_placeholder or { 'Input disabled.' }
 		}
-		write_render_text(mut buffer, textarea_rect.x, textarea_rect.y, textarea_rect.width, &placeholder, rat_style.Style{ dim: true }, [])
+		write_render_text(mut buffer, textarea_rect.x, textarea_rect.y, textarea_rect.width, &placeholder, rat_style.Style.default().dim(), [])
 		buffer.lines << placeholder
 	}
 
@@ -4083,7 +4101,7 @@ fn (composer &ChatComposer) render_collapsed_footer(area rat_layout.Rect, props 
 	if left_text.len > 0 {
 		render_footer_line(area, mut buffer, rat_text.Line{
 			spans: [
-				rat_text.Span{ text: left_text, style: rat_style.Style{ dim: true } },
+				rat_text.Span{ text: left_text, style: rat_style.Style.default().dim() },
 			]
 		})
 	}
@@ -4098,14 +4116,14 @@ fn (composer &ChatComposer) render_collapsed_footer(area rat_layout.Rect, props 
 
 fn (composer &ChatComposer) prompt_for_render() (rat_style.Style, string) {
 	if !composer.draft.input_enabled {
-		return rat_style.Style{ dim: true }, '›'
+		return rat_style.Style.default().dim(), '›'
 	}
 	if composer.draft.is_bash_mode {
-		return rat_style.Style{ foreground: .light_red, bold: true }, '!'
+		return rat_style.Style.default().light_red().bold(), '!'
 	}
 	if composer.luna_reserve_active {
 		// Reserve keeps one arrow at every reasoning effort; only its foreground changes.
-		return rat_style.Style{ foreground: .yellow, bold: true }, '›'
+		return rat_style.Style.default().yellow().bold(), '›'
 	}
 	if tier := composer.effort_tier {
 		charge := if ignition := composer.effort_ignition {
@@ -4115,7 +4133,7 @@ fn (composer &ChatComposer) prompt_for_render() (rat_style.Style, string) {
 		}
 		return tier.prompt(charge)
 	}
-	return rat_style.Style{ bold: true }, '›'
+	return rat_style.Style.default().bold(), '›'
 }
 
 fn (composer &ChatComposer) search_highlights() []Highlight {
@@ -4135,7 +4153,7 @@ fn (composer &ChatComposer) search_highlights() []Highlight {
 		result << Highlight{
 			start: start
 			end:   start + query.len
-			style: rat_style.Style{ reversed: true, bold: true }
+			style: rat_style.Style.default().add_modifier(rat_style.Modifier.reversed | rat_style.Modifier.bold)
 		}
 	}
 	return result
@@ -4240,25 +4258,17 @@ fn ranges_overlap(a_start int, a_end int, b_start int, b_end int) bool {
 }
 
 fn fuzzy_match(candidate &string, query &string) bool {
-	if query.len == 0 {
-		return true
-	}
-	mut position := 0
-	for byte in candidate.to_lower().bytes() {
-		if position < query.len && byte == query.to_lower()[position] {
-			position++
-		}
-	}
-	return position == query.len
+	return codex_utils_fuzzy_match.fuzzy_match(candidate, query) != none
 }
 
-fn slash_command_from_name(name &string) SlashCommand {
-	for command in slash_command_catalog() {
-		if command.command() == *name {
-			return command
+fn slash_command_from_name(name &string) ?slash_command.SlashCommand {
+	parsed := slash_command.SlashCommand.from_str(name) or { return none }
+	for item in slash_command.built_in_slash_commands() {
+		if item.command == parsed {
+			return parsed
 		}
 	}
-	return .unknown
+	return none
 }
 
 fn (composer &ChatComposer) service_tier_for_name(name &string) ?ServiceTierCommand {
@@ -4273,16 +4283,8 @@ fn (composer &ChatComposer) service_tier_for_name(name &string) ?ServiceTierComm
 	return none
 }
 
-fn slash_command_catalog() []SlashCommand {
-	// DO NOT ALPHA-SORT! Enum order is presentation order in the popup, so more frequently used
-	// commands must remain first.
-	return [.model, .ide, .permissions, .keymap, .vim, .elevate_sandbox, .sandbox_read_root,
-		.experimental, .auto_review, .memories, .skills, .import_cmd, .hooks, .review, .rename,
-		.new_thread, .archive, .delete_thread, .resume, .fork, .worktree, .app, .init, .compact,
-		.recap, .plan, .voice, .goal, .agents, .side, .btw, .copy, .export_cmd, .raw, .diff, .mention,
-		.status, .cd, .pwd, .usage, .debug_config, .title, .statusline, .theme, .pets, .mcp, .apps,
-		.plugins, .logout, .quit, .exit, .feedback, .rollout, .ps, .stop, .clear, .personality,
-		.test_approval, .multi_agents, .memory_drop, .memory_update]
+fn slash_command_catalog() []slash_command.SlashCommand {
+	return slash_command.built_in_slash_commands().map(it.command)
 }
 
 fn catalog_has_fuzzy_match(filter &string) bool {

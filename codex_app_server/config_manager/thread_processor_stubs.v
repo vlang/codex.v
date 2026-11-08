@@ -2,6 +2,8 @@ module config_manager
 
 import codex_app_server_protocol as api
 import codex_core
+import serde_json
+import codex_protocol.config_types
 
 // STUB: ConfigManager is owned by app-server/config_manager.rs.
 pub struct ConfigManager {
@@ -17,22 +19,49 @@ pub:
 }
 
 // STUB: loads layered configuration with request JSON and typed overrides.
-pub fn (manager &ConfigManager) load_with_overrides(config_overrides ?map[string]string, typesafe_overrides codex_core.ConfigOverrides) !codex_core.Config {
+// File/CLI layers remain untranslated. Preserve the observed ConfigBuilder service-tier
+// override boundary: an explicit clear selects standard routing, and fast routing is gated.
+pub fn (manager &ConfigManager) load_with_overrides(config_overrides ?map[string]serde_json.Value, typesafe_overrides codex_core.ConfigOverrides) !codex_core.Config {
 	_ = config_overrides
-	return codex_core.Config{
-		model_provider_id:      manager.base_config.model_provider_id.clone()
-		codex_home:             manager.base_config.codex_home.clone()
-		cwd:                    typesafe_overrides.cwd or { manager.base_config.cwd.clone() }
-		workspace_roots:        typesafe_overrides.workspace_roots or {
-			manager.base_config.workspace_roots.clone()
+	tier := if typesafe_overrides.service_tier.has_value {
+		if typesafe_overrides.service_tier.clear {
+			?string(config_types.service_tier_default_request_value.clone())
+		} else {
+			?string(typesafe_overrides.service_tier.value)
 		}
-		thread_unload_delay_ms: manager.base_config.thread_unload_delay_ms
-		ephemeral:              typesafe_overrides.ephemeral or { manager.base_config.ephemeral }
-		features:               manager.base_config.features
-		permissions:            codex_core.clone_config_permissions(&manager.base_config.permissions)
-		active_project:         manager.base_config.active_project
-		config_layer_stack:     manager.base_config.config_layer_stack.clone()
+	} else if value := manager.base_config.service_tier {
+		?string(value.clone())
+	} else {
+		?string(none)
 	}
+	service_tier := if value := tier {
+		if value in ['fast', 'priority'] {
+			if manager.base_config.features.enabled(.fast_mode) {
+				?string('priority'.clone())
+			} else {
+				?string(none)
+			}
+		} else {
+			?string(value)
+		}
+	} else {
+		?string(none)
+	}
+	mut config := manager.base_config.clone()
+	config.service_tier = service_tier
+	if model := typesafe_overrides.model {
+		config.model = model
+	}
+	if cwd := typesafe_overrides.cwd {
+		config.cwd = cwd
+	}
+	if roots := typesafe_overrides.workspace_roots {
+		config.workspace_roots = roots
+	}
+	if ephemeral := typesafe_overrides.ephemeral {
+		config.ephemeral = ephemeral
+	}
+	return config
 }
 
 // STUB: returns the ordered CLI overrides used for the initial layered load.
@@ -42,14 +71,14 @@ pub fn (manager &ConfigManager) current_cli_overrides() []CliConfigOverride {
 }
 
 // STUB: reloads layered configuration using an explicit ordered CLI override set.
-pub fn (manager &ConfigManager) load_with_cli_overrides(cli_overrides []CliConfigOverride, config_overrides ?map[string]string, typesafe_overrides codex_core.ConfigOverrides, fallback_cwd ?string) !codex_core.Config {
+pub fn (manager &ConfigManager) load_with_cli_overrides(cli_overrides []CliConfigOverride, config_overrides ?map[string]serde_json.Value, typesafe_overrides codex_core.ConfigOverrides, fallback_cwd ?string) !codex_core.Config {
 	_ = cli_overrides
 	_ = fallback_cwd
 	return manager.load_with_overrides(config_overrides, typesafe_overrides)
 }
 
 // STUB: loads layered configuration for a historical cwd during fork.
-pub fn (manager &ConfigManager) load_for_cwd(config_overrides ?map[string]string, typesafe_overrides codex_core.ConfigOverrides, history_cwd ?string) !codex_core.Config {
+pub fn (manager &ConfigManager) load_for_cwd(config_overrides ?map[string]serde_json.Value, typesafe_overrides codex_core.ConfigOverrides, history_cwd ?string) !codex_core.Config {
 	mut config := manager.load_with_overrides(config_overrides, typesafe_overrides)!
 	if cwd := history_cwd {
 		config = codex_core.clone_config_with_cwd(&config, cwd)

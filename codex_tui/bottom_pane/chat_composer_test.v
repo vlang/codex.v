@@ -1,5 +1,6 @@
 module bottom_pane
 
+import codex_tui.slash_command
 import os
 import time
 import codex_app_server_protocol.skill_metadata
@@ -10,8 +11,12 @@ import codex_protocol.openai_models
 import codex_protocol.user_input
 import codex_tui.app_event
 import codex_tui.app_event_sender
+import codex_tui.color
 import codex_tui.key_hint
 import codex_tui.keymap as tui_keymap
+import codex_tui.terminal_palette
+import codex_tui.terminal_probe
+import codex_tui.task_mentions
 import codex_config.types as config_types
 import crossterm.event as terminal_event
 import ratatui.buffer as rat_buffer
@@ -189,9 +194,16 @@ fn assert_composer_snapshot(name string, composer &ChatComposer, width u16) {
 fn plugin_mention_foreground_color(composer &ChatComposer) ?rat_style.Color {
 	highlights := composer.plugin_at_mention_highlights()
 	if highlights.len > 0 {
-		return highlights[0].style.foreground
+		return highlights[0].style.fg
 	}
 	return none
+}
+
+// Mirrors Rust's `Some(Color::...)` expectations for `Style::fg`, which is an optional color.
+fn some_color(kind rat_style.ColorKind) ?rat_style.Color {
+	return rat_style.Color{
+		kind: kind
+	}
 }
 
 fn setup_collab_footer(mut composer ChatComposer, context_percent i64,
@@ -417,11 +429,11 @@ fn test_shortcut_footer_displays_configured_chords() {
 
 fn test_parent_owned_thread_allows_bare_navigation_commands() {
 	for input, expected in {
-		'/agents':    SlashCommand.agents
-		'/subagents': SlashCommand.multi_agents
-		'/side':      SlashCommand.side
-		'/btw':       SlashCommand.btw
-		'/diff ':     SlashCommand.diff
+		'/agents':    slash_command.SlashCommand.agents
+		'/subagents': slash_command.SlashCommand.multi_agents
+		'/side':      slash_command.SlashCommand.side
+		'/btw':       slash_command.SlashCommand.btw
+		'/diff ':     slash_command.SlashCommand.diff
 	} {
 		mut composer := new_test_composer()
 		composer.set_parent_owned_thread()
@@ -451,10 +463,23 @@ fn test_parent_owned_thread_placeholder_snapshot() {
 }
 
 fn test_light_terminal_palette_renders_light_composer_snapshot() {
-	composer := new_test_composer()
+	colors := terminal_probe.DefaultColors{
+		fg: color.Rgb{0x55, 0x57, 0x53}
+		bg: color.Rgb{0xff, 0xff, 0xff}
+	}
+
 	area := rat_layout.Rect{ x: 0, y: 0, width: 48, height: 6 }
-	mut buffer := rat_buffer.Buffer{}
-	composer.render(area, mut buffer)
+	// Rust asserts inside the closure; V generics cannot return `void`, so the closure returns the
+	// rendered buffer and the assertions run immediately after the palette override is restored.
+	buffer := terminal_palette.with_test_default_colors(colors, fn [area] () rat_buffer.Buffer {
+		composer := new_test_composer()
+		mut buffer := rat_buffer.Buffer{}
+		composer.render(area, mut buffer)
+		return buffer
+	})
+
+	background := terminal_palette.rgb_color(color.Rgb{244, 244, 244})
+	assert composer_buffer_style_at(&buffer, 0, 1).bg == ?rat_style.Color(background)
 	assert composer_buffer_rows(&buffer, area) == [
 		'                                                ',
 		'› Ask Codex to do anything                      ',
@@ -463,25 +488,18 @@ fn test_light_terminal_palette_renders_light_composer_snapshot() {
 		'                                                ',
 		'  ? for shortcuts            100% context left  ',
 	]
-	background := rat_style.RgbColor{ r: 244, g: 244, b: 244 }
-	plain_background := rat_style.Style{ background: background }
+	plain_background := rat_style.Style.default().bg(background)
 	// Match all ten style transitions recorded by the Rust ratatui Buffer debug snapshot.
 	assert composer_buffer_style_at(&buffer, 0, 0) == plain_background
-	assert composer_buffer_style_at(&buffer, 0, 1) == rat_style.Style{
-		background: background
-		bold:       true
-	}
+	assert composer_buffer_style_at(&buffer, 0, 1) == plain_background.bold()
 	assert composer_buffer_style_at(&buffer, 1, 1) == plain_background
-	assert composer_buffer_style_at(&buffer, 2, 1) == rat_style.Style{
-		background: background
-		dim:        true
-	}
+	assert composer_buffer_style_at(&buffer, 2, 1) == plain_background.dim()
 	assert composer_buffer_style_at(&buffer, 26, 1) == plain_background
-	assert composer_buffer_style_at(&buffer, 0, 5) == rat_style.Style{}
-	assert composer_buffer_style_at(&buffer, 2, 5) == rat_style.Style{ dim: true }
-	assert composer_buffer_style_at(&buffer, 17, 5) == rat_style.Style{}
-	assert composer_buffer_style_at(&buffer, 29, 5) == rat_style.Style{ dim: true }
-	assert composer_buffer_style_at(&buffer, 46, 5) == rat_style.Style{}
+	assert composer_buffer_style_at(&buffer, 0, 5) == rat_style.Style.default()
+	assert composer_buffer_style_at(&buffer, 2, 5) == rat_style.Style.default().dim()
+	assert composer_buffer_style_at(&buffer, 17, 5) == rat_style.Style.default()
+	assert composer_buffer_style_at(&buffer, 29, 5) == rat_style.Style.default().dim()
+	assert composer_buffer_style_at(&buffer, 46, 5) == rat_style.Style.default()
 }
 
 fn test_footer_hint_row_is_separated_from_composer() {
@@ -650,11 +668,11 @@ fn test_shell_command_uses_shell_accent_style() {
 	mut buffer := rat_buffer.Buffer{}
 	composer.render(area, mut buffer)
 	assert composer_buffer_cell(&buffer, 0, 1).symbol == '!'
-	assert composer_buffer_cell(&buffer, 0, 1).style.foreground == .light_red
+	assert composer_buffer_cell(&buffer, 0, 1).style.fg == some_color(.light_red)
 	footer_y := area.height - 1
 	footer_text := composer_buffer_rows(&buffer, area)[int(footer_y)]
 	shell_label_x := footer_text.index('Shell mode') or { panic('expected shell mode footer label') }
-	assert composer_buffer_cell(&buffer, u16(shell_label_x), footer_y).style.foreground == .light_red
+	assert composer_buffer_cell(&buffer, u16(shell_label_x), footer_y).style.fg == some_color(.light_red)
 }
 
 fn test_plugin_at_mentions_use_plugin_accent_style() {
@@ -667,7 +685,7 @@ fn test_plugin_at_mentions_use_plugin_accent_style() {
 	assert highlights.len == 1
 	assert highlights[0].start == 0
 	assert highlights[0].end == '@sample'.len
-	assert highlights[0].style.foreground == .magenta
+	assert highlights[0].style.fg == some_color(.magenta)
 }
 
 fn test_plugin_at_mentions_render_with_plugin_accent_snapshot() {
@@ -676,14 +694,14 @@ fn test_plugin_at_mentions_render_with_plugin_accent_snapshot() {
 	composer.set_text_content_with_mention_bindings('@sample plugin', [], [], [
 		rust_test_plugin_binding(&plugin_name),
 	])
-	assert composer.plugin_at_mention_highlights().map(it.style.foreground) == [
-		.magenta,
+	assert composer.plugin_at_mention_highlights().map(it.style.fg) == [
+		some_color(.magenta),
 	]
 	mut buffer := rat_buffer.Buffer{}
 	area := rat_layout.Rect{ width: 40, height: 5 }
 	composer.render(area, mut buffer)
 	assert composer_buffer_rows(&buffer, area)[1].trim_right(' ') == '› @sample plugin'
-	magenta := buffer.cells.filter(it.y == 1 && it.style.foreground == .magenta)
+	magenta := buffer.cells.filter(it.y == 1 && it.style.fg == some_color(.magenta))
 	assert magenta.len == 7
 	assert magenta.map(it.symbol).join('') == '@sample'
 }
@@ -700,8 +718,8 @@ fn test_recalled_plugin_at_mentions_keep_plugin_accent_style() {
 	_, redraw := composer.handle_key_event(composer_test_key(.up))
 	assert redraw
 	assert composer.current_text() == '@sample plugin'
-	assert composer.plugin_at_mention_highlights().map(it.style.foreground) == [
-		.magenta,
+	assert composer.plugin_at_mention_highlights().map(it.style.fg) == [
+		some_color(.magenta),
 	]
 }
 
@@ -713,7 +731,7 @@ fn test_status_line_hyperlink_marks_pr_number_cells() {
 	composer.set_status_line(rat_text.Line{
 		spans: [rat_text.Span{
 			text:  status
-			style: rat_style.Style{ foreground: .cyan, underlined: true }
+			style: rat_style.Style.default().cyan().underlined()
 		}]
 	})
 	composer.set_status_line_hyperlink(url)
@@ -725,7 +743,7 @@ fn test_status_line_hyperlink_marks_pr_number_cells() {
 	marked_cells := buffer.cells.filter((it.hyperlink or { '' }) == url)
 	assert marked_cells.len == 'PR #20252'.bytes().filter(!it.is_space()).len
 	assert marked_cells.len == 8
-	assert marked_cells.all(it.style.foreground == .cyan && it.style.underlined)
+	assert marked_cells.all(it.style.fg == some_color(.cyan) && it.style.add_modifier.has(.underlined))
 }
 
 fn test_esc_exits_empty_shell_mode() {
@@ -849,20 +867,20 @@ fn test_empty_vim_insert_escape_enters_normal_without_esc_hint() {
 	assert composer.is_empty()
 	insert_span := composer.vim_mode_indicator_span() or { panic('missing Vim mode') }
 	assert insert_span.text == 'Vim: Insert'
-	assert insert_span.style.foreground == .green
+	assert insert_span.style.fg == some_color(.green)
 	result, redraw := composer.handle_key_event(composer_test_key(.escape))
 	assert result.kind == .no_result
 	assert redraw
 	assert composer.is_empty()
 	normal_span := composer.vim_mode_indicator_span() or { panic('missing Vim mode') }
 	assert normal_span.text == 'Vim: Normal'
-	assert normal_span.style.foreground == .magenta
+	assert normal_span.style.fg == some_color(.magenta)
 	assert composer.footer.mode == .composer_empty
 	assert !composer.footer.esc_backtrack_hint
 	composer.handle_key_event(composer_test_char(`R`))
 	replace_span := composer.vim_mode_indicator_span() or { panic('missing Vim mode') }
 	assert replace_span.text == 'Vim: Replace'
-	assert replace_span.style.foreground == .cyan
+	assert replace_span.style.fg == some_color(.cyan)
 	composer.handle_paste('x'.repeat(large_paste_char_threshold + 1))
 	assert_composer_snapshot('vim_replace_mode', &composer, 100)
 	ok := 'ok'
@@ -873,7 +891,7 @@ fn test_empty_vim_insert_escape_enters_normal_without_esc_hint() {
 	composer.handle_key_event(composer_test_key(.escape))
 	final_span := composer.vim_mode_indicator_span() or { panic('missing Vim mode') }
 	assert final_span.text == 'Vim: Normal'
-	assert final_span.style.foreground == .magenta
+	assert final_span.style.fg == some_color(.magenta)
 }
 
 fn test_slash_opens_command_popup_in_vim_insert_mode() {
@@ -894,7 +912,7 @@ fn test_slash_opens_command_popup_in_vim_insert_mode() {
 	assert composer.popups.active.kind == .command
 	span := composer.vim_mode_indicator_span() or { panic('missing Vim mode') }
 	assert span.text == 'Vim: Insert'
-	assert span.style.foreground == .green
+	assert span.style.fg == some_color(.green)
 }
 
 fn test_slash_command_dispatches_after_vim_insert_slash() {
@@ -916,7 +934,7 @@ fn test_slash_command_dispatches_after_vim_insert_slash() {
 	assert composer.is_empty()
 	span := composer.vim_mode_indicator_span() or { panic('missing Vim mode') }
 	assert span.text == 'Vim: Insert'
-	assert span.style.foreground == .green
+	assert span.style.fg == some_color(.green)
 	assert result.kind == .command
 	assert result.command == .diff
 }
@@ -939,7 +957,7 @@ fn test_inline_slash_command_dispatch_resets_vim_mode_to_insert() {
 	assert redraw
 	span := composer.vim_mode_indicator_span() or { panic('missing Vim mode') }
 	assert span.text == 'Vim: Insert'
-	assert span.style.foreground == .green
+	assert span.style.fg == some_color(.green)
 	assert result.kind == .command_with_args
 	assert result.command == .plan
 	assert result.text == 'investigate this'
@@ -971,7 +989,7 @@ fn test_bang_enters_shell_mode_in_vim_normal_mode() {
 	assert composer.draft.textarea.text() == ''
 	span := composer.vim_mode_indicator_span() or { panic('missing Vim mode') }
 	assert span.text == 'Vim: Insert'
-	assert span.style.foreground == .green
+	assert span.style.fg == some_color(.green)
 }
 
 fn test_shell_command_can_be_typed_after_vim_normal_bang() {
@@ -1207,8 +1225,7 @@ fn test_clear_for_ctrl_c_preserves_image_draft_state() {
 		false)
 	path := 'example.png'
 	composer.attach_image(path.clone())
-	placeholder := '[Image #${ /* label_number */
-	1}]'
+	placeholder := '[Image #${ /* label_number */1}]'
 	composer.clear_for_ctrl_c()
 	assert composer.is_empty()
 	history_entry := composer.history.navigate_up(&composer.app_event_tx) or {
@@ -1873,13 +1890,13 @@ fn test_task_mention_popup_and_selected_composer_snapshots() {
 		query := 'migr'
 		composer.set_text_content('@${query}', [], [])
 		composer.on_task_search_result(&query, [
-			TaskMention{
+			task_mentions.TaskMention{
 				thread_id: 'task-123'
 				title:     'Review database migration'
 				cwd:       '/workspace/project'
 				snippet:   'database migration'
 			},
-			TaskMention{
+			task_mentions.TaskMention{
 				thread_id: 'task-456'
 				title:     'migration'
 				cwd:       '/another/project'
@@ -1894,11 +1911,11 @@ fn test_task_mention_popup_and_selected_composer_snapshots() {
 			assert bindings.len == 1
 			assert bindings[0].mention == 'Review database migration'
 			assert bindings[0].path == 'thread://task-123'
-			assert (composer.task_mentions or { []TaskMention{} }).len == 0
+			assert (composer.task_mentions or { []task_mentions.TaskMention{} }).len == 0
 			area := rat_layout.Rect{ width: 40, height: 5 }
 			mut buffer := rat_buffer.Buffer{}
 			composer.render(area, mut buffer)
-			assert composer_buffer_cell(&buffer, 2, 1).style.foreground == .cyan
+			assert composer_buffer_cell(&buffer, 2, 1).style.fg == some_color(.cyan)
 		}
 		assert_composer_snapshot(if selected {
 			'task_mention_selected_composer'
@@ -1915,7 +1932,7 @@ fn test_task_mention_titles_are_normalized_and_bounded_before_insertion() {
 	query := 'task'
 	composer.set_text_content('@${query}', [], [])
 	title := 'task\n\t${'a'.repeat(154)}é${'é'.repeat(200)}'
-	composer.on_task_search_result(&query, [TaskMention{
+	composer.on_task_search_result(&query, [task_mentions.TaskMention{
 		thread_id: 'task-123'
 		title:     title
 		cwd:       '/workspace/project'
@@ -1929,7 +1946,7 @@ fn test_task_mention_titles_are_normalized_and_bounded_before_insertion() {
 	popup_text := '@task'
 	composer.draft.textarea.set_text_clearing_elements(&popup_text)
 	composer.sync_popups()
-	composer.on_task_search_result(&query, [TaskMention{
+	composer.on_task_search_result(&query, [task_mentions.TaskMention{
 		thread_id: 'task-123'
 		title:     title
 		cwd:       '/workspace/project'
@@ -3740,7 +3757,7 @@ fn test_vim_normal_operator_pending_consumes_submit_key() {
 	assert composer.draft.textarea.text() == 'hello'
 	span := composer.vim_mode_indicator_span() or { panic('missing Vim mode') }
 	assert span.text == 'Vim: Normal'
-	assert span.style.foreground == .magenta
+	assert span.style.fg == some_color(.magenta)
 	assert !composer.draft.textarea.is_vim_operator_pending()
 }
 
@@ -3802,8 +3819,7 @@ fn test_vim_normal_history_navigation_from_start_of_bang_command_recalls_older_e
 
 fn test_set_text_content_reattaches_images_without_placeholder_metadata() {
 	mut composer := new_test_composer()
-	placeholder := '[Image #${ /* label_number */
-	1}]'
+	placeholder := '[Image #${ /* label_number */1}]'
 	text := '${placeholder} restored'
 	// The source intentionally supplies no placeholder payload metadata. Attachment restoration must
 	// still associate the path with the atomic element's text range.
@@ -3989,10 +4005,8 @@ fn test_deleting_reordered_image_one_renumbers_text_in_place() {
 	mut composer := new_test_composer()
 	path1 := '/tmp/image_first.png'
 	path2 := '/tmp/image_second.png'
-	placeholder1 := '[Image #${ /* label_number */
-	1}]'
-	placeholder2 := '[Image #${ /* label_number */
-	2}]'
+	placeholder1 := '[Image #${ /* label_number */1}]'
+	placeholder2 := '[Image #${ /* label_number */2}]'
 	// Placeholders can be reordered in the text buffer; deleting image #1 should renumber
 	// image #2 wherever it appears, not just after the cursor.
 	text := 'Test ${placeholder2} test ${placeholder1}'

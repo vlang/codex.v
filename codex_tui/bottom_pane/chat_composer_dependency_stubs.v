@@ -1,6 +1,7 @@
 module bottom_pane
 
-import codex_tui.bottom_pane.slash_input as slash_parser
+import codex_tui.slash_command
+import codex_tui.bottom_pane.prompt_args
 import time
 import codex_app_server_protocol.skill_metadata
 import codex_file_search
@@ -12,6 +13,7 @@ import codex_tui.app_event_sender
 import codex_tui.key_hint
 import codex_tui.keymap as tui_keymap
 import codex_tui.mention_codec
+import codex_tui.task_mentions
 import crossterm.event as terminal_event
 import ratatui.buffer as rat_buffer
 import ratatui.layout as rat_layout
@@ -30,35 +32,6 @@ pub fn (requester &FrameRequester) schedule_frame() {}
 // STUB: crate::tui::FrameRequester::schedule_frame_in.
 pub fn (requester &FrameRequester) schedule_frame_in(_duration_ms i64) {}
 
-// STUB: crate::task_mentions::TaskMention.
-pub struct TaskMention {
-pub:
-	thread_id string
-	title     string
-	cwd       string
-	snippet   string
-}
-
-// STUB: crate::task_mentions::valid_thread_path; accepts the canonical non-empty thread URI used
-// by task search results and rejects arbitrary mention targets.
-pub fn valid_thread_path(path &string) ?string {
-	if !path.starts_with('thread://') {
-		return none
-	}
-	thread_id := (*path)['thread://'.len..].clone()
-	if thread_id.len == 0 || thread_id.len > 64 {
-		return none
-	}
-	for byte in thread_id.bytes() {
-		if !byte.is_alnum() && byte !in [`_`, `-`] {
-			return none
-		}
-	}
-	// Rust returns a borrowed `str`; V has no borrowed string-slice return, so this is the one
-	// unavoidable owned allocation at the external task-mention boundary.
-	return thread_id
-}
-
 // STUB: crate::bottom_pane::MentionBinding.
 pub struct MentionBinding {
 pub:
@@ -72,166 +45,6 @@ pub struct LocalImageAttachment {
 pub:
 	path        string
 	placeholder string
-}
-
-// STUB: super::slash_commands::ServiceTierCommand.
-pub struct ServiceTierCommand {
-pub:
-	id          string
-	name        string
-	description string
-}
-
-// STUB: crate::slash_command::SlashCommand.
-pub enum SlashCommand {
-	auto_review
-	feedback
-	new_thread
-	archive
-	delete_thread
-	fork
-	worktree
-	recap
-	clear
-	resume
-	app
-	side
-	btw
-	agents
-	multi_agents
-	vim
-	keymap
-	elevate_sandbox
-	sandbox_read_root
-	experimental
-	memories
-	quit
-	exit
-	logout
-	copy
-	rename
-	raw
-	diff
-	mention
-	skills
-	import_cmd
-	hooks
-	status
-	cd
-	pwd
-	usage
-	permissions
-	personality
-	ide
-	debug_config
-	title
-	statusline
-	theme
-	pets
-	ps
-	stop
-	memory_drop
-	memory_update
-	mcp
-	apps
-	plugins
-	rollout
-	export_cmd
-	plan
-	review
-	compact
-	model
-	init
-	goal
-	voice
-	test_approval
-	unknown
-}
-
-// STUB: crate::slash_command::SlashCommand::command.
-pub fn (command SlashCommand) command() string {
-	return match command {
-		.new_thread { 'new' }
-		.delete_thread { 'delete' }
-		.auto_review { 'approve' }
-		.multi_agents { 'subagents' }
-		.import_cmd { 'import' }
-		.export_cmd { 'export' }
-		.elevate_sandbox { 'setup-default-sandbox' }
-		.sandbox_read_root { 'sandbox-add-read-dir' }
-		.debug_config { 'debug-config' }
-		.statusline { 'statusline' }
-		.memory_drop { 'debug-m-drop' }
-		.memory_update { 'debug-m-update' }
-		.pwd { 'pwd' }
-		.test_approval { 'test-approval' }
-		else { command.str() }
-	}
-}
-
-// STUB: crate::slash_command::SlashCommand::description.
-pub fn (command SlashCommand) description() string {
-	return match command {
-		.feedback { 'send logs to maintainers' }
-		.new_thread { 'start a new chat during a conversation' }
-		.init { 'create an AGENTS.md file with instructions for Codex' }
-		.compact { 'summarize conversation to prevent hitting the context limit' }
-		.recap { 'summarize the current conversation now' }
-		.review { 'review my current changes and find issues' }
-		.rename { 'rename the current thread' }
-		.model { 'choose what model and reasoning effort to use' }
-		.resume { 'resume a saved chat' }
-		.archive { 'archive this session and exit' }
-		.delete_thread { 'permanently delete this session and exit' }
-		.clear { 'clear the terminal and start a new chat' }
-		.fork { 'fork the current chat' }
-		.worktree { 'start or continue a conversation in a new worktree' }
-		.app { 'continue this session in the Desktop app' }
-		.quit, .exit { 'exit Codex' }
-		.copy { 'copy the last response or part of it' }
-		.export_cmd { 'export the conversation as markdown' }
-		.raw { 'toggle raw scrollback mode for copy-friendly terminal selection' }
-		.diff { 'show git diff (including untracked files)' }
-		.mention { 'mention a file' }
-		.skills { 'use skills to improve how Codex performs specific tasks' }
-		.import_cmd { 'import setup, this project, and recent chats from Claude Code' }
-		.hooks { 'view and manage lifecycle hooks' }
-		.status { 'show current session configuration and token usage' }
-		.cd { 'change the current working directory' }
-		.pwd { 'show the current working directory' }
-		.usage { 'view account usage or use a usage limit reset' }
-		.debug_config { 'show config layers and requirement sources for debugging' }
-		.title { 'configure which items appear in the terminal title' }
-		.statusline { 'configure which items appear in the status line' }
-		.theme { 'choose a syntax highlighting theme' }
-		.pets { 'choose or hide the terminal pet' }
-		.ps { 'list background terminals' }
-		.stop { 'stop all background terminals' }
-		.memory_drop, .memory_update { 'DO NOT USE' }
-		.ide { 'include current selection, open files, and other context from your IDE' }
-		.personality { 'choose a communication style for Codex' }
-		.plan { 'switch to Plan mode' }
-		.voice { 'start or stop a live voice conversation' }
-		.goal { 'set or view the goal for a long-running task' }
-		.agents { 'view and switch between all active agent sessions' }
-		.multi_agents { "switch between this session's subagents" }
-		.btw, .side { 'start a side conversation in an ephemeral fork' }
-		.permissions { 'choose what Codex is allowed to do' }
-		.keymap { 'remap TUI shortcuts' }
-		.vim { 'toggle Vim mode for the composer' }
-		.elevate_sandbox { 'set up elevated agent sandbox' }
-		.sandbox_read_root { 'let sandbox read a directory: /sandbox-add-read-dir <absolute_path>' }
-		.experimental { 'toggle experimental features' }
-		.auto_review { 'approve one retry of a recent auto-review denial' }
-		.memories { 'configure memory use and generation' }
-		.mcp { 'list configured MCP tools; use /mcp verbose for details' }
-		.apps { 'manage apps' }
-		.plugins { 'browse plugins' }
-		.logout { 'log out of Codex' }
-		.rollout { 'print the rollout file path' }
-		.test_approval { 'test approval request' }
-		.unknown { '' }
-	}
 }
 
 // STUB: crate::bottom_pane::textarea::TextElementSnapshot.
@@ -682,9 +495,7 @@ pub fn (mut textarea TextArea) input(key_event terminal_event.KeyEvent) {
 pub fn (textarea &TextArea) render_ref(area rat_layout.Rect, mut buffer rat_buffer.Buffer,
 	mut _state TextAreaState) {
 	text := textarea.text()
-	write_wrapped_render_text(mut buffer, area, &text, rat_style.Style{}, textarea.element_highlights(rat_style.Style{
-		foreground: .cyan
-	}))
+	write_wrapped_render_text(mut buffer, area, &text, rat_style.Style{}, textarea.element_highlights(rat_style.Style.default().cyan()))
 }
 
 // STUB: crate::bottom_pane::textarea::TextArea::render_ref_masked.
@@ -700,10 +511,7 @@ pub fn (textarea &TextArea) render_ref_styled_with_highlights(area rat_layout.Re
 	highlights []Highlight) {
 	text := textarea.text()
 	mut combined := highlights.clone()
-	combined << textarea.element_highlights(rat_style.Style{
-		...base_style
-		foreground: .cyan
-	})
+	combined << textarea.element_highlights(base_style.cyan())
 	write_wrapped_render_text(mut buffer, area, &text, base_style, combined)
 }
 
@@ -812,242 +620,6 @@ pub fn (textarea &TextArea) is_vim_operator_pending() bool {
 // STUB: crate::bottom_pane::textarea Vim feature boundary.
 pub fn (textarea &TextArea) allows_paste_burst() bool {
 	return !textarea.is_vim_normal_mode()
-}
-
-// STUB: super::paste_burst::PasteBurst.
-pub struct PasteBurst {
-mut:
-	buffer                  string
-	held                    string
-	held_at_ms              i64
-	active                  bool
-	last_time_ms            i64
-	consecutive_plain_chars u16
-	burst_window_until_ms   i64
-}
-
-// STUB: payload tag for super::paste_burst::CharDecision.
-pub enum CharDecisionKind {
-	begin_buffer
-	buffer_append
-	retain_first_char
-	begin_buffer_from_pending
-}
-
-// STUB: super::paste_burst::CharDecision with its retroactive character-count payload.
-pub struct CharDecision {
-pub:
-	kind        CharDecisionKind
-	retro_chars int
-}
-
-// STUB: payload tag for super::paste_burst::FlushResult.
-pub enum FlushResultKind {
-	paste
-	typed
-	no_flush
-}
-
-// STUB: super::paste_burst::FlushResult with disjoint paste/typed payload fields.
-pub struct FlushResult {
-pub:
-	kind FlushResultKind
-	text string
-	ch   rune
-}
-
-// STUB: super::paste_burst::RetroGrab.
-pub struct RetroGrab {
-pub:
-	start_byte int
-	grabbed    string
-}
-
-// STUB: super::paste_burst::PasteBurst::is_active.
-pub fn (burst &PasteBurst) is_active() bool {
-	return burst.active || burst.buffer.len > 0 || burst.held.len > 0
-}
-
-// STUB: super::paste_burst::PasteBurst::begin_with_retro_grabbed.
-pub fn (mut burst PasteBurst) begin_with_retro_grabbed(text string, now_ms i64) {
-	burst.buffer += text
-	burst.active = true
-	burst.last_time_ms = now_ms
-	burst.burst_window_until_ms = now_ms + 120
-}
-
-// STUB: super::paste_burst::PasteBurst::append_char_to_buffer.
-pub fn (mut burst PasteBurst) append_char_to_buffer(ch rune, now_ms i64) {
-	burst.buffer += ch.str()
-	burst.burst_window_until_ms = now_ms + 120
-	burst.last_time_ms = now_ms
-}
-
-// STUB: super::paste_burst::PasteBurst::try_append_char_if_active.
-pub fn (mut burst PasteBurst) try_append_char_if_active(ch rune, now_ms i64) bool {
-	if !burst.active && burst.buffer.len == 0 {
-		return false
-	}
-	burst.append_char_to_buffer(ch, now_ms)
-	return true
-}
-
-// STUB: super::paste_burst::PasteBurst::on_plain_char.
-pub fn (mut burst PasteBurst) on_plain_char(ch rune, now_ms i64) CharDecision {
-	burst.note_plain_char(now_ms)
-	if burst.active {
-		burst.burst_window_until_ms = now_ms + 120
-		return CharDecision{ kind: .buffer_append }
-	}
-	if burst.held.len > 0 && now_ms - burst.held_at_ms <= 8 {
-		burst.active = true
-		burst.buffer += burst.held
-		burst.held = ''
-		burst.burst_window_until_ms = now_ms + 120
-		return CharDecision{ kind: .begin_buffer_from_pending }
-	}
-	if burst.consecutive_plain_chars >= 3 {
-		return CharDecision{
-			kind:        .begin_buffer
-			retro_chars: int(burst.consecutive_plain_chars - 1)
-		}
-	}
-	burst.held = ch.str()
-	burst.held_at_ms = now_ms
-	return CharDecision{ kind: .retain_first_char }
-}
-
-// STUB: super::paste_burst::PasteBurst::on_plain_char_no_hold.
-pub fn (mut burst PasteBurst) on_plain_char_no_hold(now_ms i64) ?CharDecision {
-	burst.note_plain_char(now_ms)
-	if burst.active {
-		burst.burst_window_until_ms = now_ms + 120
-		return CharDecision{ kind: .buffer_append }
-	}
-	if burst.consecutive_plain_chars >= 3 {
-		return CharDecision{
-			kind:        .begin_buffer
-			retro_chars: int(burst.consecutive_plain_chars - 1)
-		}
-	}
-	return none
-}
-
-// STUB: super::paste_burst::PasteBurst::note_plain_char.
-fn (mut burst PasteBurst) note_plain_char(now_ms i64) {
-	if burst.last_time_ms > 0 && now_ms - burst.last_time_ms <= 8 {
-		burst.consecutive_plain_chars++
-	} else {
-		burst.consecutive_plain_chars = 1
-	}
-	burst.last_time_ms = now_ms
-}
-
-// STUB: super::paste_burst::PasteBurst::decide_begin_buffer.
-pub fn (mut burst PasteBurst) decide_begin_buffer(now_ms i64, before &string,
-	retro_chars int) ?RetroGrab {
-	start := retro_start_index(before, retro_chars)
-	grabbed := (*before)[start..].clone()
-	if !grabbed.runes().any(rune_is_space(it)) && grabbed.runes().len < 16 {
-		return none
-	}
-	burst.begin_with_retro_grabbed(grabbed.clone(), now_ms)
-	return RetroGrab{ start_byte: start, grabbed: grabbed }
-}
-
-// STUB: super::paste_burst::retro_start_index.
-fn retro_start_index(before &string, retro_chars int) int {
-	if retro_chars <= 0 {
-		return before.len
-	}
-	runes := before.runes()
-	keep := max_int(runes.len - retro_chars, 0)
-	return runes[..keep].string().len
-}
-
-// STUB: super::paste_burst::PasteBurst::flush_if_due.
-pub fn (mut burst PasteBurst) flush_if_due(now_ms i64) FlushResult {
-	if burst.last_time_ms == 0 || now_ms - burst.last_time_ms <= 8 {
-		return FlushResult{ kind: .no_flush }
-	}
-	if burst.active || burst.buffer.len > 0 {
-		burst.active = false
-		text := burst.buffer.clone()
-		burst.buffer = ''
-		return FlushResult{ kind: .paste, text: text }
-	}
-	if burst.held.len > 0 {
-		value := burst.held.runes()[0]
-		burst.held = ''
-		return FlushResult{ kind: .typed, ch: value }
-	}
-	return FlushResult{ kind: .no_flush }
-}
-
-// STUB: super::paste_burst::PasteBurst::append_newline_if_active.
-pub fn (mut burst PasteBurst) append_newline_if_active(now_ms i64) bool {
-	if !burst.is_active() {
-		return false
-	}
-	if burst.held.len > 0 {
-		burst.buffer += burst.held
-		burst.held = ''
-	}
-	burst.active = true
-	burst.buffer += '\n'
-	burst.last_time_ms = now_ms
-	burst.burst_window_until_ms = now_ms + 120
-	return true
-}
-
-// STUB: super::paste_burst::PasteBurst::flush_before_modified_input.
-pub fn (mut burst PasteBurst) flush_before_modified_input() ?string {
-	if !burst.is_active() {
-		return none
-	}
-	burst.active = false
-	mut result := burst.buffer.clone()
-	result += burst.held
-	burst.buffer = ''
-	burst.held = ''
-	if result.len == 0 {
-		return none
-	}
-	return result
-}
-
-// STUB: super::paste_burst::PasteBurst::clear_after_explicit_paste.
-pub fn (mut burst PasteBurst) clear_after_explicit_paste() {
-	burst.buffer = ''
-	burst.held = ''
-	burst.active = false
-	burst.last_time_ms = 0
-	burst.held_at_ms = 0
-	burst.consecutive_plain_chars = 0
-	burst.burst_window_until_ms = 0
-}
-
-// STUB: super::paste_burst::PasteBurst::clear_window_after_non_char.
-pub fn (mut burst PasteBurst) clear_window_after_non_char() {
-	burst.last_time_ms = 0
-	burst.held_at_ms = 0
-	burst.consecutive_plain_chars = 0
-	burst.burst_window_until_ms = 0
-	burst.active = false
-	burst.held = ''
-}
-
-// STUB: super::paste_burst::PasteBurst timing constant.
-pub fn PasteBurst.recommended_flush_delay() i64 {
-	return 9
-}
-
-// STUB: super::paste_burst::PasteBurst timing constant.
-pub fn PasteBurst.recommended_active_flush_delay() i64 {
-	$if windows {
-		return 61
-	}
-	return 9
 }
 
 // STUB: super::chat_composer_history::HistoryEntry.
@@ -1343,7 +915,11 @@ pub fn (attachments &AttachmentState) remote_image_lines() []rat_text.Line {
 		lines << rat_text.Line{
 			spans: [rat_text.Span{
 				text:  local_image_label_text(index + 1)
-				style: rat_style.Style{ reversed: selected == index }
+				style: if selected == index {
+					rat_style.Style.default().reversed()
+				} else {
+					rat_style.Style.default()
+				}
 			}]
 		}
 	}
@@ -1829,7 +1405,11 @@ fn render_typed_popup_rows(rows []string, selected_index int, area rat_layout.Re
 		if index >= rows.len {
 			break
 		}
-		style := rat_style.Style{ reversed: index == selected_index }
+		style := if index == selected_index {
+			rat_style.Style.default().reversed()
+		} else {
+			rat_style.Style.default()
+		}
 		write_render_text(mut buffer, area.x, area.y + row, area.width, rows[index], style, [])
 		buffer.lines << rows[index]
 	}
@@ -2042,7 +1622,7 @@ pub fn render_footer_from_props(area rat_layout.Rect, mut buffer rat_buffer.Buff
 	lines := shortcut_overlay_lines(props)
 	for row in 0 .. min_int(lines.len, int(area.height)) {
 		text := lines[row].spans.map(it.text).join('')
-		write_render_text(mut buffer, area.x + min_u16(area.width, live_prefix_cols), area.y + u16(row), area.width - min_u16(area.width, live_prefix_cols), text, rat_style.Style{ dim: true }, [])
+		write_render_text(mut buffer, area.x + min_u16(area.width, live_prefix_cols), area.y + u16(row), area.width - min_u16(area.width, live_prefix_cols), text, rat_style.Style.default().dim(), [])
 		buffer.lines << text
 	}
 }
@@ -2088,7 +1668,7 @@ pub fn goal_status_indicator_line(indicator &GoalStatusIndicator) rat_text.Line 
 	}
 	return rat_text.Line{
 		spans: [
-			rat_text.Span{ text: label, style: rat_style.Style{ foreground: .magenta } },
+			rat_text.Span{ text: label, style: rat_style.Style.default().magenta() },
 		]
 	}
 }
@@ -2103,17 +1683,17 @@ pub fn status_line_right_indicator_line(collaboration ?CollaborationModeIndicato
 				if show_cycle_hint { 'Plan mode (shift+tab to cycle)' } else { 'Plan mode' }
 			}
 		}
-		spans << rat_text.Span{ text: label, style: rat_style.Style{ foreground: .magenta } }
+		spans << rat_text.Span{ text: label, style: rat_style.Style.default().magenta() }
 	} else if goal_status := goal {
 		spans << goal_status_indicator_line(&goal_status).spans
 	}
 	if ide_context_active {
 		if spans.len > 0 {
-			spans << rat_text.Span{ text: ' · ', style: rat_style.Style{ dim: true } }
+			spans << rat_text.Span{ text: ' · ', style: rat_style.Style.default().dim() }
 		}
 		spans << rat_text.Span{
 			text:  'IDE context'
-			style: rat_style.Style{ foreground: .cyan }
+			style: rat_style.Style.default().cyan()
 		}
 	}
 	return if spans.len > 0 { rat_text.Line{ spans: spans } } else { none }
@@ -2130,7 +1710,7 @@ pub fn context_window_line(percent ?i64, used_tokens ?i64) rat_text.Line {
 	}
 	return rat_text.Line{
 		spans: [
-			rat_text.Span{ text: text, style: rat_style.Style{ dim: true } },
+			rat_text.Span{ text: text, style: rat_style.Style.default().dim() },
 		]
 	}
 }
@@ -2139,7 +1719,11 @@ pub fn context_window_line(percent ?i64, used_tokens ?i64) rat_text.Line {
 fn clamp_i64(value i64, low i64, high i64) i64 {
 	return if value < low {
 		low
-	} else if value > high { high } else { value }
+	} else if value > high {
+		high
+	} else {
+		value
+	}
 }
 
 // STUB: private super::footer token-count formatter.
@@ -2295,10 +1879,11 @@ pub fn (ignition &EffortIgnition) charge_alpha() f32 {
 // STUB: super::effort_ignition::EffortTier::prompt. The eventual animation module supplies charge
 // interpolation; the stable tier colors and owned prompt glyph are preserved here.
 pub fn (tier EffortTier) prompt(charge f32) (rat_style.Style, string) {
-	return match tier {
-		.max { rat_style.Style{ foreground: .yellow, bold: charge > 0.0 }, '›' }
-		.ultra { rat_style.Style{ foreground: .magenta, bold: charge > 0.0 }, '»' }
+	style, glyph := match tier {
+		.max { rat_style.Style.default().yellow(), '›' }
+		.ultra { rat_style.Style.default().magenta(), '»' }
 	}
+	return if charge > 0.0 { style.bold() } else { style }, glyph
 }
 
 // STUB: super::chat_composer::sparkle::Sparkle animation state.
@@ -2349,9 +1934,9 @@ pub fn passive_footer_status_line(props &FooterProps) ?rat_text.Line {
 	}
 	if label := props.active_agent_label {
 		if spans.len > 0 {
-			spans << rat_text.Span{ text: ' · ', style: rat_style.Style{ dim: true } }
+			spans << rat_text.Span{ text: ' · ', style: rat_style.Style.default().dim() }
 		}
-		spans << rat_text.Span{ text: label, style: rat_style.Style{ dim: true } }
+		spans << rat_text.Span{ text: label, style: rat_style.Style.default().dim() }
 	}
 	if spans.len > 0 {
 		return rat_text.Line{ spans: spans }
@@ -2401,7 +1986,7 @@ pub fn render_context_right(area rat_layout.Rect, mut buffer rat_buffer.Buffer,
 	text := line.spans.map(it.text).join('')
 	width := min_int(text.runes().len, int(area.width))
 	x := area.x + area.width - u16(width) - min_u16(area.width - u16(width), live_prefix_cols)
-	style := if line.spans.len > 0 { line.spans[0].style } else { rat_style.Style{ dim: true } }
+	style := if line.spans.len > 0 { line.spans[0].style } else { rat_style.Style.default().dim() }
 	write_render_text(mut buffer, x, area.y, u16(width), text, style, [])
 }
 
@@ -2462,7 +2047,7 @@ pub:
 // STUB: super::mentions_v2::build_search_catalog. This preserves candidate ordering, hides skills
 // owned by a listed plugin, and normalizes task titles before the mentions-v2 module is ported.
 pub fn build_mentions_v2_catalog(skills ?[]skill_metadata.SkillMetadata, plugins ?[]codex_plugin.PluginCapabilitySummary,
-	tasks &[]TaskMention) []MentionItem {
+	tasks &[]task_mentions.TaskMention) []MentionItem {
 	mut plugin_ids := []string{}
 	if plugin_values := plugins {
 		plugin_ids = plugin_values.map(it.config_name.clone())
@@ -2569,46 +2154,6 @@ pub:
 	reasoning_up     ?key_hint.ShortcutHint
 }
 
-// STUB: super::slash_commands::BuiltinCommandFlags.
-pub struct BuiltinCommandFlags {
-pub:
-	collaboration_modes_enabled    bool
-	connectors_enabled             bool
-	plugins_command_enabled        bool
-	token_activity_command_enabled bool
-	service_tier_commands_enabled  bool
-	goal_command_enabled           bool
-	personality_command_enabled    bool
-	voice_command_enabled          bool
-	worktrees_enabled              bool
-	allow_elevate_sandbox          bool
-	side_conversation_active       bool
-}
-
-// STUB: super::slash_commands::SlashCommandItem discriminants.
-pub enum SlashCommandItemKind {
-	builtin
-	service_tier
-}
-
-// STUB: super::slash_commands::SlashCommandItem payloads.
-pub struct SlashCommandItem {
-pub:
-	kind         SlashCommandItemKind
-	builtin      SlashCommand
-	service_tier ServiceTierCommand
-}
-
-// STUB: super::slash_commands::SlashCommandItem::command. Rust returns a borrowed `str`; V must
-// allocate an owned string because it has no borrowed string-slice return.
-pub fn (item &SlashCommandItem) command() string {
-	return if item.kind == .builtin {
-		item.builtin.command()
-	} else {
-		item.service_tier.name.clone()
-	}
-}
-
 // STUB: super::slash_commands::SlashCommandItem::description. Service-tier rows retain their
 // catalog description rather than sharing a universal command payload.
 pub fn (item &SlashCommandItem) description() string {
@@ -2617,30 +2162,6 @@ pub fn (item &SlashCommandItem) description() string {
 	} else {
 		item.service_tier.description.clone()
 	}
-}
-
-// STUB: crate::slash_command::SlashCommand::supports_inline_args.
-pub fn (command SlashCommand) supports_inline_args() bool {
-	return command in [.review, .rename, .new_thread, .clear, .fork, .plan, .goal, .voice, .ide,
-		.keymap, .mcp, .export_cmd, .raw, .cd, .pwd, .usage, .pets, .side, .btw, .resume,
-		.sandbox_read_root]
-}
-
-// STUB: super::slash_commands::SlashCommandItem::supports_inline_args.
-pub fn (item &SlashCommandItem) supports_inline_args() bool {
-	return item.kind == .builtin && item.builtin.supports_inline_args()
-}
-
-// STUB: crate::slash_command::SlashCommand::available_during_task.
-pub fn (command SlashCommand) available_during_task() bool {
-	return command !in [.new_thread, .archive, .delete_thread, .fork, .worktree, .init, .compact,
-		.recap, .export_cmd, .keymap, .vim, .elevate_sandbox, .sandbox_read_root, .experimental,
-		.memories, .import_cmd, .review, .plan, .cd, .clear, .logout, .memory_drop, .memory_update]
-}
-
-// STUB: super::slash_commands::SlashCommandItem::available_during_task.
-pub fn (item &SlashCommandItem) available_during_task() bool {
-	return item.kind == .service_tier || item.builtin.available_during_task()
 }
 
 // STUB: self::slash_input::SubmissionValidation discriminants.
@@ -2706,29 +2227,7 @@ pub fn SlashInput.new(enabled bool, bash_mode bool, flags BuiltinCommandFlags,
 // STUB: super::slash_commands::find_slash_command. Feature-gated built-ins and enabled service
 // tiers share one typed lookup result, matching the Rust payload enum.
 pub fn (input &SlashInput) command(name &string) ?SlashCommandItem {
-	builtin := slash_command_from_name(name)
-	if builtin != .unknown {
-		blocked := (builtin == .elevate_sandbox && !input.command_flags.allow_elevate_sandbox)
-			|| (builtin == .plan && !input.command_flags.collaboration_modes_enabled)
-			|| (builtin == .apps && !input.command_flags.connectors_enabled)
-			|| (builtin == .plugins && !input.command_flags.plugins_command_enabled)
-			|| (builtin == .goal && !input.command_flags.goal_command_enabled)
-			|| (builtin == .worktree && !input.command_flags.worktrees_enabled)
-			|| (builtin == .personality && !input.command_flags.personality_command_enabled)
-			|| (builtin == .voice && !input.command_flags.voice_command_enabled)
-		if blocked {
-			return none
-		}
-		return SlashCommandItem{ kind: .builtin, builtin: builtin }
-	}
-	if input.command_flags.service_tier_commands_enabled {
-		for service in input.service_tier_commands {
-			if service.name == *name {
-				return SlashCommandItem{ kind: .service_tier, service_tier: service }
-			}
-		}
-	}
-	return none
+	return find_slash_command(name, input.command_flags, &input.service_tier_commands)
 }
 
 // STUB: self::slash_input::SlashInput::validate_submission.
@@ -2737,7 +2236,7 @@ pub fn (input &SlashInput) validate_submission(text &string,
 	if !input.enabled || input.bash_mode || starts_with_space || !text.starts_with('/') {
 		return SubmissionValidation{ kind: .valid }
 	}
-	name, _, _ := slash_parser.parse_slash_name(text) or { return SubmissionValidation{ kind: .valid } }
+	name, _, _ := prompt_args.parse_slash_name(text) or { return SubmissionValidation{ kind: .valid } }
 	if name.contains('/') || input.command(&name) != none {
 		return SubmissionValidation{ kind: .valid }
 	}
@@ -2750,13 +2249,13 @@ pub fn (input &SlashInput) bare_command(text &string) ?SlashCommandItem {
 		return none
 	}
 	first_line := text.all_before('\n')
-	name, rest, _ := slash_parser.parse_slash_name(&first_line) or { return none }
+	name, rest, _ := prompt_args.parse_slash_name(&first_line) or { return none }
 	if rest.len > 0 {
 		return none
 	}
 	command := input.command(&name) or { return none }
 	if command.supports_inline_args() {
-		_, full_rest, _ := slash_parser.parse_slash_name(text) or { return none }
+		_, full_rest, _ := prompt_args.parse_slash_name(text) or { return none }
 		if full_rest.len > 0 {
 			return none
 		}
@@ -2770,7 +2269,7 @@ pub fn (input &SlashInput) inline_command(text &string) ?InlineCommand {
 	if !input.enabled || input.bash_mode || text.starts_with(' ') {
 		return none
 	}
-	name, rest, rest_offset := slash_parser.parse_slash_name(text) or { return none }
+	name, rest, rest_offset := prompt_args.parse_slash_name(text) or { return none }
 	if rest.len == 0 || name.contains('/') {
 		return none
 	}
@@ -2781,7 +2280,8 @@ pub fn (input &SlashInput) inline_command(text &string) ?InlineCommand {
 	return InlineCommand{
 		command:     command
 		rest:        rest
-		rest_offset: rest_offset
+		// Existing TextElement ranges use V's signed string indices.
+		rest_offset: int(rest_offset)
 	}
 }
 
@@ -3008,7 +2508,7 @@ pub fn (composer &ChatComposer) history_search_footer_line() ?rat_text.Line {
 	return rat_text.Line{
 		spans: [rat_text.Span{ text: 'reverse-i-search: ' }, rat_text.Span{
 			text:  search.query.clone()
-			style: rat_style.Style{ foreground: .cyan }
+			style: rat_style.Style.default().cyan()
 		}, rat_text.Span{ text: status }]
 	}
 }
@@ -3067,7 +2567,7 @@ pub fn (mut composer ChatComposer) sync_slash_command_elements() {
 		cursor := composer.draft.textarea.cursor()
 		cursor_inside_name := cursor > 0 && cursor < element_end
 		if name.len > 0 && !name.contains('/') && has_space_after && !cursor_inside_name
-			&& slash_command_from_name(&name) != .unknown {
+			&& slash_command_from_name(&name) != none {
 			desired_end = element_end
 		}
 	}
@@ -3126,32 +2626,19 @@ pub fn (mut composer ChatComposer) handle_key_event_with_slash_popup(key_event t
 
 // STUB: self::command_popup ranking. Exact source ranking is owned by CommandPopup; this ordered
 // catalog preserves its observable prefix choices used by composer completion and dispatch.
-fn popup_ranked_slash_commands() []SlashCommand {
-	return [.model, .ide, .permissions, .keymap, .vim, .elevate_sandbox, .sandbox_read_root,
-		.experimental, .auto_review, .memories, .skills, .import_cmd, .hooks, .review, .rename,
-		.new_thread, .archive, .delete_thread, .resume, .fork, .worktree, .app, .init, .compact,
-		.recap, .plan, .voice, .goal, .agents, .side, .btw, .copy, .export_cmd, .raw, .diff, .mention,
-		.status, .cd, .pwd, .usage, .debug_config, .title, .statusline, .theme, .pets, .mcp, .apps,
-		.plugins, .logout, .quit, .exit, .feedback, .rollout, .ps, .stop, .clear, .personality,
-		.test_approval, .multi_agents, .memory_drop, .memory_update]
+fn popup_ranked_slash_commands() []slash_command.SlashCommand {
+	return slash_command_catalog()
 }
 
 // STUB: super::command_popup::CommandPopup::new plus on-composer-text filtering. The resulting
 // payload retains the typed command items selected by the active variant.
 pub fn CommandPopup.new(input &SlashInput, filter_text &string) CommandPopup {
 	mut commands := []SlashCommandItem{}
-	for builtin in popup_ranked_slash_commands() {
-		name := builtin.command()
-		if builtin == .apps || name.starts_with('debug') {
+	for item in commands_for_input(input.command_flags, &input.service_tier_commands) {
+		if item.kind == .builtin && (item.builtin == .apps || item.builtin.command().starts_with('debug')) {
 			continue
 		}
-		item := input.command(&name) or { continue }
 		commands << item
-		if builtin == .model && input.command_flags.service_tier_commands_enabled {
-			for service in input.service_tier_commands {
-				commands << SlashCommandItem{ kind: .service_tier, service_tier: service }
-			}
-		}
 	}
 	mut popup := CommandPopup{ commands: commands }
 	popup.on_composer_text_change(filter_text.clone())
@@ -3169,7 +2656,7 @@ pub fn (mut popup CommandPopup) on_composer_text_change(text string) {
 	stripped := if first_line.starts_with('/') { first_line[1..].trim_left(' \t') } else { '' }
 	filter := stripped.fields()[0] or { '' }
 	previous := popup.filter
-	popup.filter = filter
+	popup.filter = filter.clone()
 	popup.items = popup.commands.filter((filter.len > 0 || it.kind == .service_tier
 		|| it.builtin !in [.quit, .btw]) && (filter.len == 0 || it.command().starts_with(filter)))
 	if popup.filter != previous {

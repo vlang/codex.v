@@ -831,12 +831,20 @@ pub fn (mut communication InterAgentCommunication) set_turn_id_if_missing(turn_i
 pub fn (communication &InterAgentCommunication) to_response_input_item() ResponseInputItem {
 	// Rust clones `self` here, then strips transport-only metadata. Constructing the
 	// owned value explicitly makes that clone boundary visible to `v -ownership`.
+	mut other_recipients := []AgentPath{cap: communication.other_recipients.len}
+	for index in 0 .. communication.other_recipients.len {
+		other_recipients << AgentPath{ value: communication.other_recipients[index].value.clone() }
+	}
 	serialized_communication := InterAgentCommunication{
-		author:            communication.author
-		recipient:         communication.recipient
-		other_recipients:  communication.other_recipients
-		content:           communication.content
-		encrypted_content: communication.encrypted_content
+		author:            AgentPath{ value: communication.author.value.clone() }
+		recipient:         AgentPath{ value: communication.recipient.value.clone() }
+		other_recipients:  other_recipients
+		content:           communication.content.clone()
+		encrypted_content: if value := communication.encrypted_content {
+			value.clone()
+		} else {
+			none
+		}
 		trigger_turn:      communication.trigger_turn
 	}
 	return ResponseInputItem{

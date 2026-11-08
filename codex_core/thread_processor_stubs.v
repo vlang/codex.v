@@ -1,6 +1,9 @@
 module codex_core
 
 import codex_app_server_protocol as api
+import codex_config
+import codex_config.types as settings_types
+import codex_core.config as core_config
 import codex_extension_api
 import codex_features
 import codex_login
@@ -8,6 +11,7 @@ import codex_protocol
 import codex_protocol.config_types
 import codex_rollout
 import codex_state
+import codex_state.sqlite
 import codex_thread_store
 
 // STUB: CodexErrKind models codex-core/error's payload-bearing error details.
@@ -80,7 +84,9 @@ pub:
 // STUB: ConfigPermissions is the resolved permissions section owned by codex-core/config.
 pub struct ConfigPermissions {
 pub:
-	effective_profile     codex_protocol.PermissionProfile
+	effective_profile codex_protocol.PermissionProfile
+	// STUB: selected named-profile metadata from resolved ConfigPermissions.
+	active_profile        ?codex_protocol.ActivePermissionProfile
 	windows_sandbox_level config_types.WindowsSandboxLevel
 }
 
@@ -93,21 +99,14 @@ pub fn (permissions &ConfigPermissions) effective_permission_profile() codex_pro
 pub fn clone_config_permissions(permissions &ConfigPermissions) ConfigPermissions {
 	return ConfigPermissions{
 		effective_profile:     clone_permission_profile(&permissions.effective_profile)
+		active_profile:        permissions.active_permission_profile()
 		windows_sandbox_level: permissions.windows_sandbox_level
 	}
 }
 
 // STUB: clones the protocol permission profile retained by ConfigPermissions.
 pub fn clone_permission_profile(profile &codex_protocol.PermissionProfile) codex_protocol.PermissionProfile {
-	return codex_protocol.PermissionProfile{
-		enforcement: profile.enforcement
-		file_system: codex_protocol.FileSystemSandboxPolicy{
-			kind:              profile.file_system.kind.clone()
-			entries:           profile.file_system.entries.clone()
-			platform_defaults: profile.file_system.platform_defaults
-		}
-		network:     codex_protocol.NetworkSandboxPolicy{ kind: profile.network.kind.clone() }
-	}
+	return codex_protocol.PermissionProfile(profile.clone())
 }
 
 // STUB: TrustLevel is owned by codex-core/config.
@@ -125,8 +124,21 @@ pub:
 // STUB: Config is owned by codex-core/config.
 pub struct Config {
 pub mut:
-	model_provider_id      string
+	// Effective service tier request id preference for new turns.
+	// `default` means the user explicitly selected standard routing.
+	service_tier ?string
+	// STUB: current model selection consumed by managed new-thread defaults.
+	model ?string
+	// STUB: codex-core Config fields consumed by TUI startup update and visualization helpers.
+	respect_system_proxy        bool
+	check_for_update_on_startup bool = true
+	developer_instructions      ?string
+	model_provider_id           string
+	// STUB: Daybreak's observed base URL and resolved local credential-reader seam.
+	chatgpt_base_url       string
+	resolved_auth_config   codex_login.AuthConfig
 	codex_home             string
+	sqlite                 sqlite.SqliteConfig
 	cwd                    string
 	workspace_roots        []string
 	thread_unload_delay_ms u64
@@ -136,39 +148,156 @@ pub mut:
 	permissions            ConfigPermissions
 	active_project         ActiveProject
 	config_layer_stack     []string
+	// STUB: typed layer companion until the legacy stack stub is migrated.
+	permission_config_layer_stack codex_config.ConfigLayerStack
+	custom_permission_profiles    []PermissionProfileCatalogEntry
+	// STUB: client-owned resolved preferences observed by tui/src/local_settings.rs.
+	tui_notifications          settings_types.TuiNotificationSettings
+	animations                 bool = true
+	tui_whimsy                 bool = true
+	show_tooltips              bool = true
+	tui_auto_recap             bool = true
+	disable_paste_burst        bool
+	tui_vim_mode_default       bool
+	tui_question_esc_back      bool = true
+	tui_raw_output_mode        bool
+	tui_alternate_screen       config_types.AltScreenMode
+	tui_status_line            ?[]string
+	tui_status_line_use_colors bool = true
+	tui_terminal_title         ?[]string
+	tui_theme                  ?string
+	tui_pet                    ?string
+	tui_pet_anchor             settings_types.TuiPetAnchor
+	tui_session_picker_view    settings_types.SessionPickerViewMode = .dense
+	tui_resume_cwd             ?settings_types.ResumeCwdMode
+	tui_keymap                 settings_types.TuiKeymap
+	model_availability_nux     settings_types.ModelAvailabilityNuxConfig
+	terminal_resize_reflow     core_config.TerminalResizeReflowConfig
+	history                    settings_types.History
+	notices                    settings_types.Notice
 }
 
 // STUB: Config cloning belongs to codex-core/config; this helper exposes the cwd reload boundary.
 pub fn clone_config_with_cwd(config &Config, cwd string) Config {
 	return Config{
-		model_provider_id:      config.model_provider_id.clone()
-		codex_home:             config.codex_home.clone()
-		cwd:                    cwd
-		workspace_roots:        config.workspace_roots.clone()
-		thread_unload_delay_ms: config.thread_unload_delay_ms
-		ephemeral:              config.ephemeral
-		features:               config.features
-		model_reasoning_effort: config.model_reasoning_effort
-		permissions:            clone_config_permissions(&config.permissions)
-		active_project:         config.active_project
-		config_layer_stack:     config.config_layer_stack.clone()
+		service_tier:                  if tier := config.service_tier { tier.clone() } else { none }
+		model:                         if model := config.model { model.clone() } else { none }
+		respect_system_proxy:          config.respect_system_proxy
+		check_for_update_on_startup:   config.check_for_update_on_startup
+		developer_instructions:        if instructions := config.developer_instructions {
+			instructions.clone()
+		} else {
+			none
+		}
+		model_provider_id:             config.model_provider_id.clone()
+		chatgpt_base_url:              config.chatgpt_base_url.clone()
+		resolved_auth_config:          config.resolved_auth_config.clone()
+		codex_home:                    config.codex_home.clone()
+		sqlite:                        config.sqlite.clone()
+		cwd:                           cwd
+		workspace_roots:               config.workspace_roots.clone()
+		thread_unload_delay_ms:        config.thread_unload_delay_ms
+		ephemeral:                     config.ephemeral
+		features:                      config.features
+		model_reasoning_effort:        config.model_reasoning_effort
+		permissions:                   clone_config_permissions(&config.permissions)
+		active_project:                config.active_project
+		config_layer_stack:            config.config_layer_stack.clone()
+		permission_config_layer_stack: config.permission_config_layer_stack.clone()
+		custom_permission_profiles:    clone_custom_permission_profiles(&config.custom_permission_profiles)
+		tui_notifications:             config.tui_notifications.clone()
+		animations:                    config.animations
+		tui_whimsy:                    config.tui_whimsy
+		show_tooltips:                 config.show_tooltips
+		tui_auto_recap:                config.tui_auto_recap
+		disable_paste_burst:           config.disable_paste_burst
+		tui_vim_mode_default:          config.tui_vim_mode_default
+		tui_question_esc_back:         config.tui_question_esc_back
+		tui_raw_output_mode:           config.tui_raw_output_mode
+		tui_alternate_screen:          config.tui_alternate_screen
+		tui_status_line:               if value := config.tui_status_line {
+			value.clone()
+		} else {
+			none
+		}
+		tui_status_line_use_colors:    config.tui_status_line_use_colors
+		tui_terminal_title:            if value := config.tui_terminal_title {
+			value.clone()
+		} else {
+			none
+		}
+		tui_theme:                     if value := config.tui_theme { value.clone() } else { none }
+		tui_pet:                       if value := config.tui_pet { value.clone() } else { none }
+		tui_pet_anchor:                config.tui_pet_anchor
+		tui_session_picker_view:       config.tui_session_picker_view
+		tui_resume_cwd:                config.tui_resume_cwd
+		tui_keymap:                    config.tui_keymap.clone()
+		model_availability_nux:        config.model_availability_nux.clone()
+		terminal_resize_reflow:        config.terminal_resize_reflow
+		history:                       config.history.clone()
+		notices:                       config.notices.clone()
 	}
 }
 
 // STUB: clones a runtime Config returned across the untranslated async lock boundary.
 fn clone_core_config(config &Config) Config {
 	return Config{
-		model_provider_id:      config.model_provider_id.clone()
-		codex_home:             config.codex_home.clone()
-		cwd:                    config.cwd.clone()
-		workspace_roots:        config.workspace_roots.clone()
-		thread_unload_delay_ms: config.thread_unload_delay_ms
-		ephemeral:              config.ephemeral
-		features:               config.features
-		model_reasoning_effort: config.model_reasoning_effort
-		permissions:            clone_config_permissions(&config.permissions)
-		active_project:         config.active_project
-		config_layer_stack:     config.config_layer_stack.clone()
+		service_tier:                  if tier := config.service_tier { tier.clone() } else { none }
+		model:                         if model := config.model { model.clone() } else { none }
+		respect_system_proxy:          config.respect_system_proxy
+		check_for_update_on_startup:   config.check_for_update_on_startup
+		developer_instructions:        if instructions := config.developer_instructions {
+			instructions.clone()
+		} else {
+			none
+		}
+		model_provider_id:             config.model_provider_id.clone()
+		chatgpt_base_url:              config.chatgpt_base_url.clone()
+		resolved_auth_config:          config.resolved_auth_config.clone()
+		codex_home:                    config.codex_home.clone()
+		sqlite:                        config.sqlite.clone()
+		cwd:                           config.cwd.clone()
+		workspace_roots:               config.workspace_roots.clone()
+		thread_unload_delay_ms:        config.thread_unload_delay_ms
+		ephemeral:                     config.ephemeral
+		features:                      config.features
+		model_reasoning_effort:        config.model_reasoning_effort
+		permissions:                   clone_config_permissions(&config.permissions)
+		active_project:                config.active_project
+		config_layer_stack:            config.config_layer_stack.clone()
+		permission_config_layer_stack: config.permission_config_layer_stack.clone()
+		custom_permission_profiles:    clone_custom_permission_profiles(&config.custom_permission_profiles)
+		tui_notifications:             config.tui_notifications.clone()
+		animations:                    config.animations
+		tui_whimsy:                    config.tui_whimsy
+		show_tooltips:                 config.show_tooltips
+		tui_auto_recap:                config.tui_auto_recap
+		disable_paste_burst:           config.disable_paste_burst
+		tui_vim_mode_default:          config.tui_vim_mode_default
+		tui_question_esc_back:         config.tui_question_esc_back
+		tui_raw_output_mode:           config.tui_raw_output_mode
+		tui_alternate_screen:          config.tui_alternate_screen
+		tui_status_line:               if value := config.tui_status_line {
+			value.clone()
+		} else {
+			none
+		}
+		tui_status_line_use_colors:    config.tui_status_line_use_colors
+		tui_terminal_title:            if value := config.tui_terminal_title {
+			value.clone()
+		} else {
+			none
+		}
+		tui_theme:                     if value := config.tui_theme { value.clone() } else { none }
+		tui_pet:                       if value := config.tui_pet { value.clone() } else { none }
+		tui_pet_anchor:                config.tui_pet_anchor
+		tui_session_picker_view:       config.tui_session_picker_view
+		tui_resume_cwd:                config.tui_resume_cwd
+		tui_keymap:                    config.tui_keymap.clone()
+		model_availability_nux:        config.model_availability_nux.clone()
+		terminal_resize_reflow:        config.terminal_resize_reflow
+		history:                       config.history.clone()
+		notices:                       config.notices.clone()
 	}
 }
 

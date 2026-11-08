@@ -1,6 +1,7 @@
 module key_hint
 
 import crossterm.event
+import ratatui.style as rat_style
 
 struct C0Case {
 	ctrl_char rune
@@ -155,7 +156,7 @@ fn test_display_labels_and_span_conversions_preserve_rendering() {
 
 	owned_span := span_from_binding(binding)
 	assert owned_span.text == 'ctrl + shift + ⌥ + a'
-	assert owned_span.style.dim
+	assert owned_span.style == rat_style.Style.default().dim()
 	borrowed_span := span_from_borrowed_binding(&binding)
 	assert borrowed_span == owned_span
 
@@ -164,5 +165,5 @@ fn test_display_labels_and_span_conversions_preserve_rendering() {
 	assert !hint.is_press(event.KeyEvent.new(event.KeyCode.char_key(`x`), event.key_modifiers_control))
 	hint_span := span_from_shortcut_hint(hint)
 	assert hint_span.text == 'ctrl + x enter'
-	assert hint_span.style.dim
+	assert hint_span.style == rat_style.Style.default().dim()
 }

@@ -102,6 +102,8 @@ pub fn (sender &OutgoingMessageSender) send_server_notification(notification api
 		mut state := sender.state
 		state.notifications << match notification {
 			api.ConfigWarningNotification { 'config_warning' }
+			api.ItemCompletedNotification { 'item_completed' }
+			api.TurnCompletedNotification { 'turn_completed' }
 			api.DeprecationNoticeNotification { 'deprecation_notice' }
 			api.ThreadArchivedNotification { 'thread_archived' }
 			api.ThreadNameUpdatedNotification { 'thread_name_updated' }

@@ -1,5 +1,7 @@
 module bottom_pane
 
+import codex_tui.mention_codec
+
 // V modules are directory-scoped, while Rust's completion_target child imports ChatComposer's
 // private TextArea and mention helpers. Keeping this shim in bottom_pane avoids a module cycle;
 // the filename preserves its eventual `chat_composer/completion_target.rs` owner.
@@ -268,7 +270,7 @@ fn dollar_query_kind(query &string) DollarQueryKind {
 		return .definite_shell_parameter
 	}
 	name := query.all_before(':')
-	if query.to_upper() == *query && is_common_environment_variable(&name) {
+	if query.to_upper() == *query && mention_codec.is_common_env_var(&name) {
 		return .shell_variable
 	}
 	if (*query)[0].is_digit() || query.starts_with('-') {
@@ -279,11 +281,4 @@ fn dollar_query_kind(query &string) DollarQueryKind {
 	} else {
 		.invalid
 	}
-}
-
-// STUB: `crate::mention_codec::is_common_env_var` used by completion_target.
-fn is_common_environment_variable(name &string) bool {
-	return *name == 'HOME' || *name == 'PATH' || *name == 'USER' || *name == 'SHELL'
-		|| *name == 'PWD' || *name == 'OLDPWD' || *name == 'TMPDIR' || *name == 'LANG'
-		|| *name == 'TERM' || *name == 'EDITOR' || *name == 'VISUAL'
 }

@@ -399,7 +399,11 @@ WHERE so.thread_id = ? AND so.source_updated_at = ?
 	selected.sort_with_compare(fn (a &model.Stage1Output, b &model.Stage1Output) int {
 		return if a.thread_id.value < b.thread_id.value {
 			-1
-		} else if a.thread_id.value > b.thread_id.value { 1 } else { 0 }
+		} else if a.thread_id.value > b.thread_id.value {
+			1
+		} else {
+			0
+		}
 	})
 	return selected
 }
@@ -1181,7 +1185,11 @@ fn max_i64(a i64, b i64) i64 {
 fn clamp_usize(value usize, low usize, high usize) usize {
 	return if value < low {
 		low
-	} else if value > high { high } else { value }
+	} else if value > high {
+		high
+	} else {
+		value
+	}
 }
 
 fn usize_to_i64_saturating(value usize) i64 {

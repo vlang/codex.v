@@ -62,22 +62,22 @@ pub fn normalize_pasted_path(pasted &string) ?string {
 		}
 		return percent_decode_path(path)
 	}
-	if looks_like_windows_path(unquoted) {
+	if looks_like_windows_path(&unquoted) {
 		return unquoted
 	}
 	parts := split_shell_path(trimmed) or { return none }
-	if looks_like_windows_path(parts) {
+	if looks_like_windows_path(&parts) {
 		return parts
 	}
 	return parts
 }
 
 // STUB: private helper owned by `crate::clipboard_paste`; recognizes drive and UNC paths.
-fn looks_like_windows_path(path string) bool {
+fn looks_like_windows_path(path &string) bool {
 	return path.starts_with('\\\\')
-		|| (path.len >= 3 && path[0].ascii_str().to_lower() >= 'a'
-			&& path[0].ascii_str().to_lower() <= 'z' && path[1] == `:`
-			&& path[2] in [`\\`, `/`])
+		|| (path.len >= 3 && (*path)[0].ascii_str().to_lower() >= 'a'
+			&& (*path)[0].ascii_str().to_lower() <= 'z' && (*path)[1] == `:`
+			&& (*path)[2] in [`\\`, `/`])
 }
 
 // STUB: private helper owned by `crate::clipboard_paste`; decodes exactly one shell path.

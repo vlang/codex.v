@@ -1,15 +1,28 @@
 module config_types
 
+import codex_protocol.openai_models
+
 // STUB: Approval routing configuration.
 pub enum ApprovalsReviewer {
 	user
-	guardian
+	auto_review
 }
 
 // STUB: Collaboration preset configuration.
 pub struct CollaborationMode {
 pub:
-	mode string
+	mode     ModeKind
+	settings Settings
+}
+
+// STUB: protocol/src/config_types.rs::Settings owns a collaboration mode's
+// model, effort and optional developer instructions. ReasoningEffort retains
+// its existing dependency representation until that source owner is ported.
+pub struct Settings {
+pub:
+	model                  string
+	reasoning_effort       ?openai_models.ReasoningEffort
+	developer_instructions ?string
 }
 
 // STUB: Effective collaboration mode kind.

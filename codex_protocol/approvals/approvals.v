@@ -31,44 +31,30 @@ pub:
 	rule string
 }
 
-// STUB: Guardian assessment payload.
-pub struct GuardianAssessmentEvent {
-pub:
-	id string
-}
-
-// STUB: Guardian assessment action.
-pub enum GuardianAssessmentAction {
-	approve
-	deny
-	ask_user
-}
-
 // STUB: Source of a guardian assessment decision.
 pub enum GuardianAssessmentDecisionSource {
-	model
-	policy
-	user
+	agent
 }
 
 // STUB: Guardian assessment outcome.
 pub enum GuardianAssessmentOutcome {
-	approved
-	denied
-	escalated
+	allow
+	deny
 }
 
 // STUB: Guardian assessment lifecycle status.
 pub enum GuardianAssessmentStatus {
-	pending
-	completed
-	failed
+	in_progress
+	approved
+	denied
+	timed_out
+	aborted
 }
 
 // STUB: Source of the guardian-reviewed command.
 pub enum GuardianCommandSource {
-	agent
-	user
+	shell
+	unified_exec
 }
 
 // STUB: Guardian risk classification.
@@ -80,9 +66,11 @@ pub enum GuardianRiskLevel {
 }
 
 // STUB: User authorization attached to a guardian assessment.
-pub struct GuardianUserAuthorization {
-pub:
-	authorized bool
+pub enum GuardianUserAuthorization {
+	unknown
+	low
+	medium
+	high
 }
 
 // STUB: Context attached to a network approval.
@@ -95,8 +83,8 @@ pub:
 pub enum NetworkApprovalProtocol {
 	http
 	https
-	tcp
-	udp
+	socks5_tcp
+	socks5_udp
 }
 
 // STUB: Network policy amendment payload.

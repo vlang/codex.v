@@ -15,12 +15,16 @@ pub fn keymap_ownership_harness() int {
 	$if ownership ? {
 		submit_spec := 'ctrl-enter'.to_owned()
 		toggle_spec := 'f12'.to_owned()
-		configured.composer.submit = types.KeybindingsSpec.from_one(types.KeybindingSpec{
+		// Name each owned aggregate before passing it onward. The pinned ownership checker
+		// otherwise counts the nested field construction and function argument as two moves.
+		submit_binding := types.KeybindingSpec{
 			value: submit_spec
-		})
-		configured.global.toggle_raw_output = types.KeybindingsSpec.from_one(types.KeybindingSpec{
+		}
+		toggle_binding := types.KeybindingSpec{
 			value: toggle_spec
-		})
+		}
+		configured.composer.submit = types.KeybindingsSpec.from_one(submit_binding)
+		configured.global.toggle_raw_output = types.KeybindingsSpec.from_one(toggle_binding)
 	} $else {
 		configured.composer.submit = types.KeybindingsSpec.from_one(types.KeybindingSpec{
 			value: 'ctrl-enter'

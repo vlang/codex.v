@@ -147,15 +147,19 @@ pub fn populate_thread_turns_from_history(mut thread_value api.Thread, history &
 		}
 	}
 	if live_turn := active_turn {
-		mut replaced := false
+		// Select the destination before moving the owned turn. The two assignment
+		// branches are exclusive without relying on the checker to correlate a flag
+		// with a move inside the preceding loop.
+		mut replacement_index := ?int(none)
 		for index, turn in turns {
 			if turn.id == live_turn.id {
-				turns[index] = live_turn
-				replaced = true
+				replacement_index = index
 				break
 			}
 		}
-		if !replaced {
+		if index := replacement_index {
+			turns[index] = live_turn
+		} else {
 			turns << live_turn
 		}
 	}

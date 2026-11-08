@@ -1,6 +1,8 @@
 module codex_protocol
 
-import x.json2
+$if ownership ? {
+	import json2
+}
 
 // V3 0.5.2 rejects json2's unspecialized generic counter when this module is imported by an
 // ownership build that otherwise only decodes JSON. A concrete encode keeps that compiler-only

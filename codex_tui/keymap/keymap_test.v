@@ -306,13 +306,14 @@ fn test_default_copy_binding_is_ctrl_o() {
 fn test_permission_shortcuts_reserve_plain_text() {
 	for binding in ['a', 'shift-a', '2', 'space'] {
 		mut resolved_keymap := types.TuiKeymap{}
-		resolved_keymap.chat.previous_permission_mode = one(binding)
+		// `one` takes its spec by value where Rust borrows `&str`; clone every reuse.
+		resolved_keymap.chat.previous_permission_mode = one(binding.clone())
 		assert expect_config_error(&resolved_keymap, 'permission shortcuts must not intercept typing').contains('printable keys')
 		resolved_keymap.chat.previous_permission_mode = none
-		resolved_keymap.chat.next_permission_mode = one(binding)
+		resolved_keymap.chat.next_permission_mode = one(binding.clone())
 		assert !config_is_ok(&resolved_keymap)
 		resolved_keymap.chat.next_permission_mode = none
-		resolved_keymap.chat.skip_question = one(binding)
+		resolved_keymap.chat.skip_question = one(binding.clone())
 		assert !config_is_ok(&resolved_keymap)
 		resolved_keymap.chat.skip_question = none
 		resolved_keymap.chat.prompt_stack_back = one(binding)
@@ -603,7 +604,8 @@ fn test_configured_legacy_vim_bindings_prune_new_navigation_defaults() {
 fn test_explicit_vim_navigation_binding_still_conflicts_with_legacy_binding() {
 	for key in ['f', 't'] {
 		mut resolved_keymap := types.TuiKeymap{}
-		resolved_keymap.vim_normal.move_left = one(key)
+		// `one` takes its spec by value where Rust borrows `&str`; clone every reuse.
+		resolved_keymap.vim_normal.move_left = one(key.clone())
 		mut action := ''
 		if key == 'f' {
 			resolved_keymap.vim_normal.find_forward = one(key)
@@ -981,7 +983,8 @@ fn test_toggle_side_conversation_can_be_remapped_and_rejects_conflicts() {
 fn test_toggle_side_conversation_default_yields_to_existing_configured_bindings() {
 	for binding in ['ctrl-/', 'ctrl-7'] {
 		mut resolved_keymap := types.TuiKeymap{}
-		resolved_keymap.global.open_transcript = one(binding)
+		// `one` takes its spec by value where Rust borrows `&str`; clone every reuse.
+		resolved_keymap.global.open_transcript = one(binding.clone())
 
 		runtime := expect_runtime(&resolved_keymap, 'existing keymap remains valid')
 
@@ -1104,7 +1107,8 @@ fn test_parses_all_named_non_character_keys() {
 	}
 
 	for spec, expected_key in cases {
-		binding := parse_keybinding(spec) or { panic('failed to parse ${spec}') }
+		// `parse_keybinding` takes its spec by value where Rust borrows `&str`.
+		binding := parse_keybinding(spec.clone()) or { panic('failed to parse ${spec}') }
 		assert binding.parts() == key_hint.KeyParts{
 			code:      expected_key
 			modifiers: event.key_modifiers_none

@@ -1,6 +1,8 @@
 module codex_app_server_protocol
 
 import codex_protocol
+import codex_protocol.items
+import serde_json
 import json2
 
 // STUB: OptionalJsonValue preserves the optional structured `serde_json::Value` error data.
@@ -56,7 +58,9 @@ pub:
 }
 
 // STUB: ServerNotification is the generated notification union in codex-app-server-protocol.
-pub type ServerNotification = ConfigWarningNotification
+pub type ServerNotification = ItemCompletedNotification
+	| TurnCompletedNotification
+	| ConfigWarningNotification
 	| DeprecationNoticeNotification
 	| ThreadArchivedNotification
 	| ThreadNameUpdatedNotification
@@ -173,9 +177,14 @@ pub enum ThreadItemKind {
 // STUB: ThreadItem is generated from the v2 protocol schema; these are the fields observed here.
 pub struct ThreadItem {
 pub:
-	id      string
-	kind    ThreadItemKind
-	content []string
+	id              string
+	kind            ThreadItemKind
+	content         []string
+	text            string
+	phase           ?codex_protocol.MessagePhase
+	memory_citation ?MemoryCitation
+	delivery        ?items.AgentMessageDelivery
+	questions       ?[]items.AsyncUserInputQuestion
 }
 
 // STUB: Turn is generated from the v2 protocol schema.
@@ -374,18 +383,17 @@ pub:
 	many []string
 }
 
-// STUB: AskForApproval is generated from the v2 protocol schema.
-pub enum AskForApproval {
-	untrusted
-	on_failure
-	on_request
-	never
-}
+// STUB: v2/shared.rs::AskForApproval's canonical tagged Copy representation lives
+// in permission_discovery_approval_stubs.v. The distinct backing name avoids V
+// confusing this API type with codex_protocol's same-named policy during cloning.
+pub type AskForApproval = ApprovalPolicy
 
 // STUB: ApprovalsReviewer is generated from the v2 protocol schema.
 pub enum ApprovalsReviewer {
 	user
+	// STUB: legacy spelling retained for earlier typed callers; normalize to auto_review.
 	guardian_subagent
+	auto_review
 }
 
 // STUB: SandboxMode is generated from the v2 protocol schema.
@@ -873,8 +881,8 @@ pub:
 	realtime_session_id ?string
 }
 
-// STUB: ThreadStartParams is generated from the v2 protocol schema; fields not inspected by the
-// pure translation are represented by their serialized form.
+// STUB: ThreadStartParams is generated from the v2 protocol schema; config
+// preserves structured JSON values, including booleans and nested server objects.
 pub struct ThreadStartParams {
 pub:
 	model                         ?string
@@ -887,7 +895,7 @@ pub:
 	approvals_reviewer            ?ApprovalsReviewer
 	sandbox                       ?SandboxMode
 	permissions                   ?string
-	config                        ?map[string]string
+	config                        ?map[string]serde_json.Value
 	service_name                  ?string
 	base_instructions             ?string
 	developer_instructions        ?string
@@ -918,7 +926,7 @@ pub:
 	approvals_reviewer      ?ApprovalsReviewer
 	sandbox                 ?SandboxMode
 	permissions             ?string
-	config                  ?map[string]string
+	config                  ?map[string]serde_json.Value
 	base_instructions       ?string
 	developer_instructions  ?string
 	personality             ?codex_protocol.Personality
@@ -942,7 +950,7 @@ pub:
 	approvals_reviewer      ?ApprovalsReviewer
 	sandbox                 ?SandboxMode
 	permissions             ?string
-	config                  ?map[string]string
+	config                  ?map[string]serde_json.Value
 	base_instructions       ?string
 	developer_instructions  ?string
 	ephemeral               bool

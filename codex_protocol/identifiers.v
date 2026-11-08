@@ -59,7 +59,7 @@ pub type ThreadId = thread_id.ThreadId
 
 // STUB: Display formatting belongs to thread_id.rs.
 pub fn (id &ThreadId) str() string {
-	return id.value
+	return id.value.clone()
 }
 
 // STUB: Exact upstream response usage metadata belongs to response_usage.rs.

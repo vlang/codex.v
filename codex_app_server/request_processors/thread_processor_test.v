@@ -1,5 +1,6 @@
 module request_processors
 
+import serde_json
 import codex_app_server_protocol as api
 import codex_protocol
 import codex_thread_store as store
@@ -321,7 +322,7 @@ fn test_collect_resume_override_mismatches_includes_service_tier() {
 		model_provider_id:  'openai'
 		service_tier:       'flex'
 		cwd:                os.temp_dir()
-		approval_policy:    .on_request
+		approval_policy:    api.AskForApproval{ kind: .on_request }
 		approvals_reviewer: .user
 	}
 	mismatches := collect_resume_override_mismatches(&resume_request, &snapshot)
@@ -347,6 +348,8 @@ fn test_summary_from_thread_metadata_formats_protocol_timestamps_as_seconds() {
 	assert summary.updated_at or { '' } == '2025-09-05T16:53:12Z'
 }
 
+// Qualify optional alias-enum arguments at call sites: this V compiler can resolve
+// shorthand .high to the unrelated GuardianRiskLevel enum through ?ReasoningEffortConfig.
 fn fixture_thread_metadata(model ?string, reasoning_effort ?codex_protocol.ReasoningEffortConfig) ThreadMetadata {
 	return ThreadMetadata{
 		id:               codex_protocol.ThreadId{ value: '3f941c35-29b3-493b-b0a4-e25800d9aeb0' }
@@ -362,54 +365,57 @@ fn fixture_thread_metadata(model ?string, reasoning_effort ?codex_protocol.Reaso
 fn test_merge_persisted_resume_metadata_prefers_persisted_model_and_reasoning_effort() {
 	mut request_overrides := OptionalStringMap{}
 	mut typesafe_overrides := ConfigOverrides{}
-	persisted_metadata := fixture_thread_metadata('gpt-5.1-codex-max', .high)
+	persisted_metadata := fixture_thread_metadata('gpt-5.1-codex-max', codex_protocol.ReasoningEffortConfig.high)
 	merge_persisted_resume_metadata(mut request_overrides, mut typesafe_overrides, &persisted_metadata)
 	assert typesafe_overrides.model or { '' } == 'gpt-5.1-codex-max'
 	assert typesafe_overrides.model_provider or { '' } == 'mock_provider'
 	assert request_overrides.has_value
-	assert request_overrides.value == {
-		'model_reasoning_effort': 'high'
+	expected_overrides := {
+		'model_reasoning_effort': serde_json.Value.string('high')
 	}
+	assert json_config_maps_equal(&request_overrides.value, &expected_overrides)
 }
 
 fn test_merge_persisted_resume_metadata_preserves_explicit_overrides() {
 	mut request_overrides := OptionalStringMap{
 		has_value: true
 		value:     {
-			'model_reasoning_effort': 'low'
+			'model_reasoning_effort': serde_json.Value.string('low')
 		}
 	}
 	mut typesafe_overrides := ConfigOverrides{ model: 'gpt-5.2-codex' }
-	persisted_metadata := fixture_thread_metadata('gpt-5.1-codex-max', .high)
+	persisted_metadata := fixture_thread_metadata('gpt-5.1-codex-max', codex_protocol.ReasoningEffortConfig.high)
 	merge_persisted_resume_metadata(mut request_overrides, mut typesafe_overrides, &persisted_metadata)
 	assert typesafe_overrides.model or { '' } == 'gpt-5.2-codex'
 	assert typesafe_overrides.model_provider == none
-	assert request_overrides.value == {
-		'model_reasoning_effort': 'low'
+	expected_overrides := {
+		'model_reasoning_effort': serde_json.Value.string('low')
 	}
+	assert json_config_maps_equal(&request_overrides.value, &expected_overrides)
 }
 
 fn test_merge_persisted_resume_metadata_skips_persisted_values_when_model_overridden() {
 	mut request_overrides := OptionalStringMap{
 		has_value: true
 		value:     {
-			'model': 'gpt-5.2-codex'
+			'model': serde_json.Value.string('gpt-5.2-codex')
 		}
 	}
 	mut typesafe := ConfigOverrides{}
-	persisted := fixture_thread_metadata('gpt-5.1-codex-max', .high)
+	persisted := fixture_thread_metadata('gpt-5.1-codex-max', codex_protocol.ReasoningEffortConfig.high)
 	merge_persisted_resume_metadata(mut request_overrides, mut typesafe, &persisted)
 	assert typesafe.model == none
 	assert typesafe.model_provider == none
-	assert request_overrides.value == {
-		'model': 'gpt-5.2-codex'
+	expected_overrides := {
+		'model': serde_json.Value.string('gpt-5.2-codex')
 	}
+	assert json_config_maps_equal(&request_overrides.value, &expected_overrides)
 }
 
 fn test_merge_persisted_resume_metadata_skips_persisted_values_when_provider_overridden() {
 	mut request_overrides := OptionalStringMap{}
 	mut typesafe_overrides := ConfigOverrides{ model_provider: 'oss' }
-	persisted_metadata := fixture_thread_metadata('gpt-5.1-codex-max', .high)
+	persisted_metadata := fixture_thread_metadata('gpt-5.1-codex-max', codex_protocol.ReasoningEffortConfig.high)
 	merge_persisted_resume_metadata(mut request_overrides, mut typesafe_overrides, &persisted_metadata)
 	assert typesafe_overrides.model == none
 	assert typesafe_overrides.model_provider or { '' } == 'oss'
@@ -420,16 +426,17 @@ fn test_merge_persisted_resume_metadata_skips_persisted_values_when_reasoning_ef
 	mut request_overrides := OptionalStringMap{
 		has_value: true
 		value:     {
-			'model_reasoning_effort': 'low'
+			'model_reasoning_effort': serde_json.Value.string('low')
 		}
 	}
 	mut typesafe := ConfigOverrides{}
-	persisted := fixture_thread_metadata('gpt-5.1-codex-max', .high)
+	persisted := fixture_thread_metadata('gpt-5.1-codex-max', codex_protocol.ReasoningEffortConfig.high)
 	merge_persisted_resume_metadata(mut request_overrides, mut typesafe, &persisted)
 	assert typesafe.model == none
 	assert typesafe.model_provider == none
 	assert request_overrides.has_value
-	assert request_overrides.value['model_reasoning_effort'] == 'low'
+	expected_effort := serde_json.Value.string('low')
+	assert unsafe { (&request_overrides.value['model_reasoning_effort']).equals(&expected_effort) }
 }
 
 fn test_merge_persisted_resume_metadata_skips_missing_values() {
@@ -1081,4 +1088,51 @@ fn test_ownership_borrowed_helpers_preserve_callers() {
 	paginate_background_terminals(&terminals, none, u32(1)) or { panic(err) }
 	paginate_background_terminals(&terminals, none, u32(1)) or { panic(err) }
 	assert terminals[1].process_id == '2'
+}
+
+fn test_config_clone_retains_independent_service_tier() {
+	mut tier := 'priority'
+	$if ownership ? {
+		tier = tier.to_owned()
+	}
+	config := Config{ service_tier: tier }
+	mut first := clone_config(&config)
+	mut second := clone_config(&config)
+	assert first.service_tier == ?string('priority')
+	assert second.service_tier == ?string('priority')
+	first.service_tier = 'flex'.clone()
+	second.service_tier = none
+	assert config.service_tier == ?string('priority')
+	assert first.service_tier == ?string('flex')
+	assert second.service_tier == none
+}
+
+fn test_approval_override_preserves_granular_flags_and_borrowed_json() {
+	mut text := '{"granular":{"sandbox_approval":true,"rules":false,"mcp_elicitations":true,"skill_approval":true,"request_permissions":false}}'
+	$if ownership ? {
+		text = text.to_owned()
+	}
+	value := serde_json.from_str(&text) or { panic(err) }
+	for _ in 0 .. 2 {
+		policy := parse_approval_policy_override(&value) or { panic(err) }
+		assert policy.kind == .granular
+		flags := policy.granular or { panic('missing granular flags') }
+		assert flags.sandbox_approval
+		assert !flags.rules
+		assert flags.mcp_elicitations
+		assert flags.skill_approval
+		assert !flags.request_permissions
+	}
+	assert value.is_object()
+	assert text.contains('request_permissions')
+	for legacy in ['on-request', 'on_request'] {
+		name := serde_json.Value.string(legacy.clone())
+		assert parse_approval_policy_override(&name) or { panic(err) } == api.AskForApproval{ kind: .on_request }
+	}
+	bad := serde_json.Value.object({
+		'granular': serde_json.Value.object({})
+	})
+	if _ := parse_approval_policy_override(&bad) {
+		assert false, 'missing required granular flags must fail'
+	}
 }

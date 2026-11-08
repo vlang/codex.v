@@ -1,6 +1,7 @@
 module codex_utils_absolute_path
 
 import os
+import std_path
 
 // STUB: AbsolutePathBuf is translated here only far enough for protocol ownership and path logic.
 pub struct AbsolutePathBuf {
@@ -22,16 +23,16 @@ pub fn resolve_path_against_base(path &string, base &string) AbsolutePathBuf {
 }
 
 // STUB: Borrowed Path conversion belongs to codex-utils-absolute-path.
-pub fn (path &AbsolutePathBuf) as_path() string {
-	return path.path
+pub fn (path &AbsolutePathBuf) as_path() std_path.Path {
+	return std_path.Path.new(&path.path)
 }
 
 // STUB: Owned PathBuf conversion belongs to codex-utils-absolute-path.
-pub fn (path &AbsolutePathBuf) to_path_buf() string {
-	return path.path
+pub fn (path &AbsolutePathBuf) to_path_buf() std_path.PathBuf {
+	return std_path.PathBuf.from(path.path.clone())
 }
 
 // STUB: Display formatting belongs to codex-utils-absolute-path.
 pub fn (path &AbsolutePathBuf) str() string {
-	return path.path
+	return path.path.clone()
 }
